@@ -1174,66 +1174,74 @@ class AcousticSceneClassificationAppCore(AppCore):
                 # Collect training examples
                 data = {}
                 annotations = {}
-                item_progress = tqdm(self.dataset.train(fold),
-                                     desc="           {0: >15s}".format('Collect data '),
-                                     file=sys.stdout,
-                                     leave=False,
-                                     bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} ',
-                                     disable=self.disable_progress_bar,
-                                     ascii=self.use_ascii_progress_bar
-                                     )
 
-                for item_id, item in enumerate(item_progress):
-                    if self.log_system_progress:
-                        self.logger.info('  {title:<15s} [{item_id:d}/{total:d}] {item:<20s}'.format(
-                            title='Collect data ',
-                            item_id=item_id,
-                            total=len(item_progress),
-                            item=os.path.split(item['file'])[-1])
-                        )
+                learner_method = self.params.get_path('learner.method')
+                feature_method = self.params['feature_stacker']['stacking_recipe'][0]['method']
 
-                    item_progress.set_postfix(file=os.path.splitext(os.path.split(item['file'])[-1])[0])
-                    item_progress.update()
+                if learner_method == 'soundnet' and feature_method == 'raw_audio':
+                    pass
 
-                    # Load features
-                    feature_filenames = self._get_feature_filename(audio_file=item['file'],
-                                                                   path=self.params.get_path('path.feature_extractor'))
-                    feature_repository = FeatureRepository()
-                    for method, feature_filename in iteritems(feature_filenames):
-                        if os.path.isfile(feature_filename):
-                            feature_repository[method] = self.FeatureContainer().load(filename=feature_filename)
-                        else:
-                            message = '{name}: Features not found [{file}]'.format(
-                                name=self.__class__.__name__,
-                                file=item['file']
+                else:
+                    item_progress = tqdm(self.dataset.train(fold),
+                                         desc="           {0: >15s}".format('Collect data '),
+                                         file=sys.stdout,
+                                         leave=False,
+                                         bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} ',
+                                         disable=self.disable_progress_bar,
+                                         ascii=self.use_ascii_progress_bar
+                                         )
+
+                    for item_id, item in enumerate(item_progress):
+                        if self.log_system_progress:
+                            self.logger.info('  {title:<15s} [{item_id:d}/{total:d}] {item:<20s}'.format(
+                                title='Collect data ',
+                                item_id=item_id,
+                                total=len(item_progress),
+                                item=os.path.split(item['file'])[-1])
                             )
 
-                            self.logger.exception(message)
-                            raise IOError(message)
+                        item_progress.set_postfix(file=os.path.splitext(os.path.split(item['file'])[-1])[0])
+                        item_progress.update()
 
-                    # Mask annotated audio errors
-                    if feature_masker:
-                        feature_repository = feature_masker.process(
+                        # Load features
+                        feature_filenames = self._get_feature_filename(audio_file=item['file'],
+                                                                       path=self.params.get_path('path.feature_extractor'))
+                        feature_repository = FeatureRepository()
+                        for method, feature_filename in iteritems(feature_filenames):
+                            if os.path.isfile(feature_filename):
+                                feature_repository[method] = self.FeatureContainer().load(filename=feature_filename)
+                            else:
+                                message = '{name}: Features not found [{file}]'.format(
+                                    name=self.__class__.__name__,
+                                    file=item['file']
+                                )
+
+                                self.logger.exception(message)
+                                raise IOError(message)
+
+                        # Mask annotated audio errors
+                        if feature_masker:
+                            feature_repository = feature_masker.process(
+                                feature_repository=feature_repository,
+                                mask_events=self.dataset.file_error_meta(item['file'])
+                            )
+
+                        # Stack features
+                        feature_container = feature_stacker.process(
                             feature_repository=feature_repository,
-                            mask_events=self.dataset.file_error_meta(item['file'])
+                            feature_hop=self.params.get_path('feature_stacker.feature_hop', 1)
                         )
 
-                    # Stack features
-                    feature_container = feature_stacker.process(
-                        feature_repository=feature_repository,
-                        feature_hop=self.params.get_path('feature_stacker.feature_hop', 1)
-                    )
+                        # Normalize features
+                        if feature_normalizer:
+                            feature_container = feature_normalizer.process(feature_container=feature_container)
 
-                    # Normalize features
-                    if feature_normalizer:
-                        feature_container = feature_normalizer.process(feature_container=feature_container)
+                        # Aggregate features
+                        if feature_aggregator:
+                            feature_container = feature_aggregator.process(feature_container=feature_container)
 
-                    # Aggregate features
-                    if feature_aggregator:
-                        feature_container = feature_aggregator.process(feature_container=feature_container)
-
-                    data[item['file']] = feature_container
-                    annotations[item['file']] = item
+                        data[item['file']] = feature_container
+                        annotations[item['file']] = item
 
                 learner = self._get_learner(method=self.params.get_path('learner.method'),
                                             class_labels=self.dataset.scene_labels,
