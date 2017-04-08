@@ -13,7 +13,7 @@ sets:
     feature_stacker:
       stacking_recipe: raw_audio
     feature_aggregator:
-      enable: true
+      enable: false
       aggregation_recipe: flatten
       win_length_seconds: 0.1
       hop_length_seconds: 0.02
@@ -227,7 +227,7 @@ sets:
     feature_stacker:
       stacking_recipe: mfcc
     feature_normalizer:
-      enable: true
+      enable: false
     feature_aggregator:
       enable: false
     learner:
@@ -250,12 +250,12 @@ defaults:
   # Flow
   # ==========================================================
   flow:
-    initialize: true
-    extract_features: true
-    feature_normalizer: true
+    initialize: false
+    extract_features: false
+    feature_normalizer: false
     train_system: true
-    test_system: true
-    evaluate_system: true
+    test_system: false
+    evaluate_system: false
 
   # ==========================================================
   # General
@@ -275,7 +275,8 @@ defaults:
   # Paths
   # ==========================================================
   path:
-    data: data/
+#    data: data/
+    data: /Users/JL/Documents/SMC10/Master-Thesis/Sound data bases/DCASE 2017/
 
     system_base: system/task1/
     feature_extractor: feature_extractor/
@@ -428,7 +429,7 @@ defaults:
   # Feature normalizer
   # ==========================================================
   feature_normalizer:
-    enable: true
+    enable: false
     type: global                                        # [global]
 
   # ==========================================================
