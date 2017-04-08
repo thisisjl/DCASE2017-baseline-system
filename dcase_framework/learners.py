@@ -1235,6 +1235,13 @@ class SceneClassifierMLP(SceneClassifier, KerasMixin):
         return self.model.predict(x=feature_data).T
 
 
+class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
+    """Scene classifier with Soundnet"""
+
+    def __init__(self, *args, **kwargs):
+        super(SceneClassifierSoundnet, self).__init__(*args, **kwargs)
+        self.method = 'soundnet'
+
 class EventDetector(LearnerContainer):
     """Event detector (Frame classifier / Multiclass - Multilabel)"""
     @staticmethod
