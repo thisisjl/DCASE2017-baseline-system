@@ -83,6 +83,8 @@ from .utils import Timer
 
 from tqdm import tqdm
 
+from random import shuffle
+
 
 def scene_classifier_factory(*args, **kwargs):
     if kwargs.get('method', None) == 'gmm':
@@ -1394,17 +1396,19 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
                 self.timer.start()
 
             def on_batch_begin(self, batch, logs=None):
-                if self.seen < self.params['samples']:
-                    self.log_values = []
+                # if self.seen < self.params['samples']:
+                #     self.log_values = []
+                pass
 
             def on_batch_end(self, batch, logs=None):
-                logs = logs or {}
-                batch_size = logs.get('size', 0)
-                self.seen += batch_size
-
-                for k in self.params['metrics']:
-                    if k in logs:
-                        self.log_values.append((k, logs[k]))
+                # logs = logs or {}
+                # batch_size = logs.get('size', 0)
+                # self.seen += batch_size
+                #
+                # for k in self.params['metrics']:
+                #     if k in logs:
+                #         self.log_values.append((k, logs[k]))
+                pass
 
             def on_epoch_end(self, epoch, logs=None):
                 logs = logs or {}
@@ -1492,15 +1496,22 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
             )
 
         batch_size = 2  # self.learner_params.get_path('training.batch_size', 1)
-        train_generator = raw_audio_generator(training_files, annotations, batch_size)
-        valid_generator = raw_audio_generator(validation_files, annotations, batch_size)
+
+        shuffled_trn = copy.copy(training_files)
+        shuffle(shuffled_trn)
+        train_generator = raw_audio_generator(shuffled_trn, annotations, batch_size)
+
+        shuffled_val = copy.copy(validation_files)
+        shuffle(shuffled_val)
+        valid_generator = raw_audio_generator(shuffled_val, annotations, batch_size)
+
         steps_per_epoch = len(training_files)/batch_size
         validation_steps = len(validation_files)/batch_size
         epochs = 1  # self.learner_params.get_path('training.epochs', 1)
 
         hist = self.model.fit_generator(train_generator, steps_per_epoch, epochs, verbose=1,
-                                        validation_data=validation_data, validation_steps=validation_steps)#,
-                                        # callbacks=callbacks)
+                                        validation_data=valid_generator, validation_steps=validation_steps,
+                                        callbacks=callbacks)
 
         # hist = self.model.fit(x=X_training,
         #                       y=Y_training,
