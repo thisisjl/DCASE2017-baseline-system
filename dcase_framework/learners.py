@@ -1246,22 +1246,21 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
         mono = True  # self.params
 
         # frame_size = int(numpy.ceil(frame_size_sec * desired_fs))
-        def raw_audio_generator(_annotations, batch_size):
+        def raw_audio_generator(split_files, _annotations, batch_size):
             while True:
 
                 batch_idx = 0
 
-                for item, metadata in _annotations.items():
+                # for item, metadata in _annotations.items():
+                for item_filename in split_files:
 
                     if batch_idx == 0:
                         batch_files = []
                         batch_data = {}
                         batch_annotations = {}
 
-                    item_filename = metadata.file
-
                     batch_files.append(item_filename)
-                    batch_annotations[item] = metadata
+                    batch_annotations[item_filename] = _annotations[item_filename]  #metadata
 
                     item_data, fs = AudioFile().load(item_filename, fs=desired_fs, mono=mono)
 
@@ -1275,35 +1274,36 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
                     if batch_idx == batch_size - 1:
 
                         # Convert annotations into activity matrix format
-                        activity_matrix_dict = self._get_target_matrix_dict(data=batch_data, annotations=batch_annotations)
+                        activity_matrix_dict = self._get_target_matrix_dict(data=batch_data,
+                                                                            annotations=batch_annotations)
 
                         X_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
                         Y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
 
                         batch_idx = 0  # reinitialize batch counter
-                        yield X_training, Y_training # output of generator
+                        yield X_training, Y_training  # output of generator
 
                     else:
                         batch_idx += 1
 
-                    # start_idx = 0
-                    # end_idx = frame_size
-                    # x = []
-                    # while start_idx < len(x) - frame_size:
-                    #     x.append(item_data[start_idx:end_idx])
-                    #
-                    #     start_idx += hop_size
-                    #     end_idx = start_idx + frame_size
-                    # # duration_sec = len(item_data) * fs
+                        # start_idx = 0
+                        # end_idx = frame_size
+                        # x = []
+                        # while start_idx < len(x) - frame_size:
+                        #     x.append(item_data[start_idx:end_idx])
+                        #
+                        #     start_idx += hop_size
+                        #     end_idx = start_idx + frame_size
+                        # # duration_sec = len(item_data) * fs
 
                 if not batch_idx == 0:
                     X_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
                     Y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
                     yield X_training, Y_training  # output of generator
 
-        # aa = raw_audio_generator(annotations, 2)
+        # aa = next(rraw_audio_generator(training_files, annotations, 2))
         # TODO: find a way to get the input shape from data
-        input_shape = int(numpy.ceil(desired_fs * 10))
+        input_shape = int(numpy.ceil(desired_fs * 10)) + 1
 
         # self.create_model(input_shape=self._get_input_size(data=data))
         self.create_model(input_shape=input_shape)
@@ -1445,18 +1445,26 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
                 epoch=self.learner_params.get_path('training.epochs', 1))
             )
 
-        #TODO: change to fit_generator
-        #TODO: add validation
+        batch_size = 2  # self.learner_params.get_path('training.batch_size', 1)
+        train_generator = raw_audio_generator(training_files, annotations, batch_size)
+        valid_generator = raw_audio_generator(validation_files, annotations, batch_size)
+        steps_per_epoch = len(training_files)/batch_size
+        validation_steps = len(validation_files)/batch_size
+        epochs = 1  # self.learner_params.get_path('training.epochs', 1)
 
-        hist = self.model.fit(x=X_training,
-                              y=Y_training,
-                              batch_size=self.learner_params.get_path('training.batch_size', 1),
-                              epochs=self.learner_params.get_path('training.epochs', 1),
-                              validation_data=validation,
-                              verbose=0,
-                              shuffle=self.learner_params.get_path('training.shuffle', True),
-                              callbacks=callbacks
-                              )
+        hist = self.model.fit_generator(train_generator, steps_per_epoch, epochs, verbose=1,
+                                        validation_data=validation_data, validation_steps=validation_steps)#,
+                                        # callbacks=callbacks)
+
+        # hist = self.model.fit(x=X_training,
+        #                       y=Y_training,
+        #                       batch_size=self.learner_params.get_path('training.batch_size', 1),
+        #                       epochs=self.learner_params.get_path('training.epochs', 1),
+        #                       validation_data=validation,
+        #                       verbose=0,
+        #                       shuffle=self.learner_params.get_path('training.shuffle', True),
+        #                       callbacks=callbacks
+        #                       )
         self['learning_history'] = hist.history
 
 
