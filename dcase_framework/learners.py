@@ -1288,12 +1288,11 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
             import keras
 
         # crate generator
+        desired_fs = 44100  # self.params
+        mono = True  # self.params
+
+        # frame_size = int(numpy.ceil(frame_size_sec * desired_fs))
         def raw_audio_generator(_annotations, batch_size):
-
-            desired_fs = 44100  # self.params
-            mono = True  # self.params
-            # frame_size = int(numpy.ceil(frame_size_sec * desired_fs))
-
             while True:
 
                 batch_idx = 0
@@ -1349,8 +1348,11 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
                     yield X_training, Y_training  # output of generator
 
         # aa = raw_audio_generator(annotations, 2)
+        # TODO: find a way to get the input shape from data
+        input_shape = int(numpy.ceil(desired_fs * 10))
 
-        self.create_model(input_shape=self._get_input_size(data=data))
+        # self.create_model(input_shape=self._get_input_size(data=data))
+        self.create_model(input_shape=input_shape)
 
         if self.show_extra_debug:
             self.log_model_summary()
@@ -1470,16 +1472,16 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
                     raise AttributeError(message)
 
         self.set_seed()
-        if self.show_extra_debug:
-            self.logger.debug('  Training items \t[{examples:d}]'.format(examples=len(X_training)))
-        if validation_files:
-            X_validation = numpy.vstack([data[x].feat[0] for x in validation_files])
-            Y_validation = numpy.vstack([activity_matrix_dict[x] for x in validation_files])
-            validation = (X_validation, Y_validation)
-            if self.show_extra_debug:
-                self.logger.debug('  Validation items \t[{validation:d}]'.format(validation=len(X_validation)))
-        else:
-            validation = None
+        # if self.show_extra_debug:
+        #     self.logger.debug('  Training items \t[{examples:d}]'.format(examples=len(X_training)))
+        # if validation_files:
+        #     X_validation = numpy.vstack([data[x].feat[0] for x in validation_files])
+        #     Y_validation = numpy.vstack([activity_matrix_dict[x] for x in validation_files])
+        #     validation = (X_validation, Y_validation)
+        #     if self.show_extra_debug:
+        #         self.logger.debug('  Validation items \t[{validation:d}]'.format(validation=len(X_validation)))
+        # else:
+        #     validation = None
         if self.show_extra_debug:
             self.logger.debug('  Batch size \t[{batch:d}]'.format(
                 batch=self.learner_params.get_path('training.batch_size', 1))
@@ -1488,6 +1490,9 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
             self.logger.debug('  Epochs \t\t[{epoch:d}]'.format(
                 epoch=self.learner_params.get_path('training.epochs', 1))
             )
+
+        #TODO: change to fit_generator
+        #TODO: add validation
 
         hist = self.model.fit(x=X_training,
                               y=Y_training,
