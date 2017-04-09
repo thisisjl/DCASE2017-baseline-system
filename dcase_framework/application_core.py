@@ -1179,7 +1179,18 @@ class AcousticSceneClassificationAppCore(AppCore):
                 feature_method = self.params['feature_stacker']['stacking_recipe'][0]['method']
 
                 if learner_method == 'soundnet' and feature_method == 'raw_audio':
-                    pass
+
+                    fold_items = self.dataset.train(fold)
+
+                    for item in fold_items:
+                        fc = self.FeatureContainer()
+                        fc.feat = None
+                        fc.stats = None
+                        fc.meta = {'audio_file': item['file']}
+
+                        data[item['file']] = fc
+
+                    annotations = {k['file']: k for k in fold_items}
 
                 else:
                     item_progress = tqdm(self.dataset.train(fold),
