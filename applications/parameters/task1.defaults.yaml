@@ -137,7 +137,7 @@ sets:
 
         training:
           epochs: 200
-          batch_size: 256
+          batch_size: 2
           shuffle: true
           callbacks:
             - type: EarlyStopping
@@ -157,32 +157,250 @@ sets:
                 save_weights_only: False                  # if True, then only the model's weights will be saved (model.save_weights(filepath)), else the full model is saved  
         model:
           config:
+            # block 1
+            - class_name: Conv1D
+              config:
+                filters: 32
+                kernel_size: 64
+                strides: 2
+                padding: valid
+                dilation_rate: 1
+                activation:
+                use_bias: True
+                kernel_initializer: glorot_uniform
+                bias_initializer: zeros
+                kernel_regularizer:
+                bias_regularizer:
+                activity_regularizer:
+                kernel_constraint:
+                bias_constraint:
+                name: conv1
+            
+            - class_name: BatchNormalization
+              config:
+                axis: -1
+                momentum: 0.99
+                epsilon: 0.001
+                center: True
+                scale: True
+                beta_initializer: zeros
+                gamma_initializer: ones 
+                moving_mean_initializer: zeros
+                moving_variance_initializer: ones
+                beta_regularizer:
+                gamma_regularizer:
+                beta_constraint:
+                gamma_constraint:
+                name: batch_norm1
+            
+            - class_name: Activation
+              config:
+                activation_function: relu
+                name: relu1
+            
+            - class_name: MaxPooling1D
+              config:
+                pool_size: 8
+                strides: 8
+                padding: valid
+                name: pool1
+
+            # block 2
+            - class_name: Conv1D
+              config:
+                filters: 64
+                kernel_size: 32
+                strides: 2
+                padding: valid
+                dilation_rate: 1
+                activation:
+                use_bias: True
+                kernel_initializer: glorot_uniform
+                bias_initializer: zeros
+                kernel_regularizer:
+                bias_regularizer:
+                activity_regularizer:
+                kernel_constraint:
+                bias_constraint:
+                name: conv2
+            
+            - class_name: BatchNormalization
+              config:
+                axis: -1
+                momentum: 0.99
+                epsilon: 0.001
+                center: True
+                scale: True
+                beta_initializer: zeros
+                gamma_initializer: ones 
+                moving_mean_initializer: zeros
+                moving_variance_initializer: ones
+                beta_regularizer:
+                gamma_regularizer:
+                beta_constraint:
+                gamma_constraint:
+                name: batch_norm2
+            
+            - class_name: Activation
+              config:
+                activation_function: relu
+                name: relu2
+            
+            - class_name: MaxPooling1D
+              config:
+                pool_size: 8
+                strides: 8
+                padding: valid
+                name: pool2
+            
+            # block 3
+            - class_name: Conv1D
+              config:
+                filters: 128
+                kernel_size: 16
+                strides: 2
+                padding: valid
+                dilation_rate: 1
+                activation:
+                use_bias: True
+                kernel_initializer: glorot_uniform
+                bias_initializer: zeros
+                kernel_regularizer:
+                bias_regularizer:
+                activity_regularizer:
+                kernel_constraint:
+                bias_constraint:
+                name: conv3
+            
+            - class_name: BatchNormalization
+              config:
+                axis: -1
+                momentum: 0.99
+                epsilon: 0.001
+                center: True
+                scale: True
+                beta_initializer: zeros
+                gamma_initializer: ones 
+                moving_mean_initializer: zeros
+                moving_variance_initializer: ones
+                beta_regularizer:
+                gamma_regularizer:
+                beta_constraint:
+                gamma_constraint:
+                name: batch_norm3
+            
+            - class_name: Activation
+              config:
+                activation_function: relu
+                name: relu3
+            
+            - class_name: MaxPooling1D
+              config:
+                pool_size: 8
+                strides: 8
+                padding: valid
+                name: pool3
+
+            # block 4
+            - class_name: Conv1D
+              config:
+                filters: 256
+                kernel_size: 8
+                strides: 2
+                padding: valid
+                dilation_rate: 1
+                activation:
+                use_bias: True
+                kernel_initializer: glorot_uniform
+                bias_initializer: zeros
+                kernel_regularizer:
+                bias_regularizer:
+                activity_regularizer:
+                kernel_constraint:
+                bias_constraint:
+                name: conv4
+            
+            - class_name: BatchNormalization
+              config:
+                axis: -1
+                momentum: 0.99
+                epsilon: 0.001
+                center: True
+                scale: True
+                beta_initializer: zeros
+                gamma_initializer: ones 
+                moving_mean_initializer: zeros
+                moving_variance_initializer: ones
+                beta_regularizer:
+                gamma_regularizer:
+                beta_constraint:
+                gamma_constraint:
+                name: batch_norm4
+            
+            - class_name: Activation
+              config:
+                activation_function: relu
+                name: relu4
+            
+            # - class_name: MaxPooling1D
+            #   config:
+            #     pool_size: 8
+            #     strides: 8
+            #     padding: valid
+
+            # block 5
+            - class_name: Conv1D
+              config:
+                filters: 1401
+                kernel_size: 16
+                strides: 12
+                padding: valid
+                dilation_rate: 1
+                activation:
+                use_bias: True
+                kernel_initializer: glorot_uniform
+                bias_initializer: zeros
+                kernel_regularizer:
+                bias_regularizer:
+                activity_regularizer:
+                kernel_constraint:
+                bias_constraint:
+                name: conv5
+            
+            # - class_name: BatchNormalization
+            #   config:
+            #     axis: -1
+            #     momentum: 0.99
+            #     epsilon: 0.001
+            #     center: True
+            #     scale: True
+            #     beta_initializer: zeros
+            #     gamma_initializer: ones 
+            #     moving_mean_initializer: zeros
+            #     moving_variance_initializer: ones
+            #     beta_regularizer:
+            #     gamma_regularizer:
+            #     beta_constraint:
+            #     gamma_constraint:
+            
+            - class_name: Activation
+              config:
+                activation_function: relu
+                name: relu5
+            
+            # - class_name: MaxPooling1D
+            #   config:
+            #     pool_size: 8
+            #     strides: 8
+            #     padding: valid
+
+            # # this last layer is not in the original soundnet. TODO: change it
+            - class_name: Flatten
             - class_name: Dense
               config:
-                units: 50
-                kernel_initializer: uniform
-                activation: relu
-
-            - class_name: Dropout
-              config:
-                rate: 0.2
-
-            - class_name: Dense
-              config:
-                units: 50
-                kernel_initializer: uniform
-                activation: relu
-
-            - class_name: Dropout
-              config:
-                rate: 0.2
-
-            - class_name: Dense
-              config:
-                units: CLASS_COUNT
-                kernel_initializer: uniform
+                units: 15
                 activation: softmax
-
+                
           loss: categorical_crossentropy
 
           optimizer:
