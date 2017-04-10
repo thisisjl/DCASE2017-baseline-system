@@ -195,7 +195,7 @@ sets:
             
             - class_name: Activation
               config:
-                activation_function: relu
+                activation: relu
                 name: relu1
             
             - class_name: MaxPooling1D
@@ -243,7 +243,7 @@ sets:
             
             - class_name: Activation
               config:
-                activation_function: relu
+                activation: relu
                 name: relu2
             
             - class_name: MaxPooling1D
@@ -291,7 +291,7 @@ sets:
             
             - class_name: Activation
               config:
-                activation_function: relu
+                activation: relu
                 name: relu3
             
             - class_name: MaxPooling1D
@@ -339,7 +339,7 @@ sets:
             
             - class_name: Activation
               config:
-                activation_function: relu
+                activation: relu
                 name: relu4
             
             # - class_name: MaxPooling1D
@@ -385,7 +385,7 @@ sets:
             
             - class_name: Activation
               config:
-                activation_function: relu
+                activation: relu
                 name: relu5
             
             # - class_name: MaxPooling1D
