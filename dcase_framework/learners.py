@@ -1506,8 +1506,9 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
         shuffle(shuffled_val)
         valid_generator = raw_audio_generator(shuffled_val, annotations, validation_batch_size)
 
-        steps_per_epoch = 2#len(training_files)/batch_size
-        validation_steps = 2#len(validation_files)/batch_size
+        # the number of training and validation steps
+        steps_per_epoch = len(training_files)/batch_size
+        validation_steps = len(validation_files)/batch_size
 
         # train the model
         hist = self.model.fit_generator(train_generator,
@@ -1518,15 +1519,6 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
                                         validation_steps=validation_steps,
                                         callbacks=callbacks)
 
-        # hist = self.model.fit(x=X_training,
-        #                       y=Y_training,
-        #                       batch_size=self.learner_params.get_path('training.batch_size', 1),
-        #                       epochs=self.learner_params.get_path('training.epochs', 1),
-        #                       validation_data=validation,
-        #                       verbose=0,
-        #                       shuffle=self.learner_params.get_path('training.shuffle', True),
-        #                       callbacks=callbacks
-        #                       )
         self['learning_history'] = hist.history
 
 
