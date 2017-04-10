@@ -1313,89 +1313,87 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
         if self.show_extra_debug:
             self.log_model_summary()
 
-        # X_training = numpy.vstack([data[x].feat[0] for x in training_files])
-        # Y_training = numpy.vstack([activity_matrix_dict[x] for x in training_files])
-
-        class FancyProgbarLogger(keras.callbacks.Callback):
-            """Callback that prints metrics to stdout.
-            """
-
-            def __init__(self, callbacks=None, queue_length=10, metric=None, disable_progress_bar=False, log_progress=False):
-                self.metric = metric
-                self.disable_progress_bar = disable_progress_bar
-                self.log_progress = log_progress
-                self.timer = Timer()
-
-            def on_train_begin(self, logs=None):
-                self.logger = logging.getLogger(__name__)
-                self.verbose = self.params['verbose']
-                self.epochs = self.params['epochs']
-                if self.log_progress:
-                    self.logger.info('Starting training process')
-                self.pbar = tqdm(total=self.epochs,
-                                 file=sys.stdout,
-                                 desc='           {0:>15s}'.format('Learn (epoch)'),
-                                 leave=False,
-                                 miniters=1,
-                                 disable=self.disable_progress_bar
-                                 )
-
-            def on_train_end(self, logs=None):
-                self.pbar.close()
-
-            def on_epoch_begin(self, epoch, logs=None):
-                if self.log_progress:
-                    self.logger.info('  Epoch %d/%d' % (epoch + 1, self.epochs))
-                self.seen = 0
-                self.timer.start()
-
-            def on_batch_begin(self, batch, logs=None):
-                # if self.seen < self.params['samples']:
-                #     self.log_values = []
-                pass
-
-            def on_batch_end(self, batch, logs=None):
-                # logs = logs or {}
-                # batch_size = logs.get('size', 0)
-                # self.seen += batch_size
-                #
-                # for k in self.params['metrics']:
-                #     if k in logs:
-                #         self.log_values.append((k, logs[k]))
-                pass
-
-            def on_epoch_end(self, epoch, logs=None):
-                logs = logs or {}
-                postfix = {
-                    'train': None,
-                    'validation': None,
-                }
-                for k in self.params['metrics']:
-                    if k in logs:
-                        self.log_values.append((k, logs[k]))
-                        if self.metric and k.endswith(self.metric):
-                            if k.startswith('val_'):
-                                postfix['validation'] = '{:4.2f}'.format(logs[k] * 100.0)
-                            else:
-                                postfix['train'] = '{:4.2f}'.format(logs[k] * 100.0)
-                self.timer.stop()
-                if self.log_progress:
-                    self.logger.info('                train={train}, validation={validation}, time={time}'.format(
-                        train=postfix['train'],
-                        validation=postfix['validation'],
-                        time=self.timer.get_string())
-                    )
-
-                self.pbar.set_postfix(postfix)
-                self.pbar.update(1)
-
-        # Add model callbacks
-        fancy_logger = FancyProgbarLogger(metric=self.learner_params.get_path('model.metrics')[0],
-                                          disable_progress_bar=self.disable_progress_bar,
-                                          log_progress=self.log_progress)
-
-        # Callback list, always have FancyProgbarLogger
-        callbacks = [fancy_logger]
+        # class FancyProgbarLogger(keras.callbacks.Callback):
+        #     """Callback that prints metrics to stdout.
+        #     """
+        #
+        #     def __init__(self, callbacks=None, queue_length=10, metric=None, disable_progress_bar=False, log_progress=False):
+        #         self.metric = metric
+        #         self.disable_progress_bar = disable_progress_bar
+        #         self.log_progress = log_progress
+        #         self.timer = Timer()
+        #
+        #     def on_train_begin(self, logs=None):
+        #         self.logger = logging.getLogger(__name__)
+        #         self.verbose = self.params['verbose']
+        #         self.epochs = self.params['epochs']
+        #         if self.log_progress:
+        #             self.logger.info('Starting training process')
+        #         self.pbar = tqdm(total=self.epochs,
+        #                          file=sys.stdout,
+        #                          desc='           {0:>15s}'.format('Learn (epoch)'),
+        #                          leave=False,
+        #                          miniters=1,
+        #                          disable=self.disable_progress_bar
+        #                          )
+        #
+        #     def on_train_end(self, logs=None):
+        #         self.pbar.close()
+        #
+        #     def on_epoch_begin(self, epoch, logs=None):
+        #         if self.log_progress:
+        #             self.logger.info('  Epoch %d/%d' % (epoch + 1, self.epochs))
+        #         self.seen = 0
+        #         self.timer.start()
+        #
+        #     def on_batch_begin(self, batch, logs=None):
+        #         # if self.seen < self.params['samples']:
+        #         #     self.log_values = []
+        #         pass
+        #
+        #     def on_batch_end(self, batch, logs=None):
+        #         # logs = logs or {}
+        #         # batch_size = logs.get('size', 0)
+        #         # self.seen += batch_size
+        #         #
+        #         # for k in self.params['metrics']:
+        #         #     if k in logs:
+        #         #         self.log_values.append((k, logs[k]))
+        #         pass
+        #
+        #     def on_epoch_end(self, epoch, logs=None):
+        #         logs = logs or {}
+        #         postfix = {
+        #             'train': None,
+        #             'validation': None,
+        #         }
+        #         for k in self.params['metrics']:
+        #             if k in logs:
+        #                 self.log_values.append((k, logs[k]))
+        #                 if self.metric and k.endswith(self.metric):
+        #                     if k.startswith('val_'):
+        #                         postfix['validation'] = '{:4.2f}'.format(logs[k] * 100.0)
+        #                     else:
+        #                         postfix['train'] = '{:4.2f}'.format(logs[k] * 100.0)
+        #         self.timer.stop()
+        #         if self.log_progress:
+        #             self.logger.info('                train={train}, validation={validation}, time={time}'.format(
+        #                 train=postfix['train'],
+        #                 validation=postfix['validation'],
+        #                 time=self.timer.get_string())
+        #             )
+        #
+        #         self.pbar.set_postfix(postfix)
+        #         self.pbar.update(1)
+        #
+        # # Add model callbacks
+        # fancy_logger = FancyProgbarLogger(metric=self.learner_params.get_path('model.metrics')[0],
+        #                                   disable_progress_bar=self.disable_progress_bar,
+        #                                   log_progress=self.log_progress)
+        #
+        # # Callback list, always have FancyProgbarLogger
+        # callbacks = [fancy_logger]
+        callbacks = []
 
         callback_params = self.learner_params.get_path('training.callbacks', [])
         if callback_params:
@@ -1449,22 +1447,29 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
                 epoch=self.learner_params.get_path('training.epochs', 1))
             )
 
-        batch_size = 2  # self.learner_params.get_path('training.batch_size', 1)
+        batch_size = self.learner_params.get_path('training.batch_size', 1)
 
+        # create training generator
         shuffled_trn = copy.copy(training_files)
         shuffle(shuffled_trn)
         train_generator = raw_audio_generator(shuffled_trn, annotations, batch_size)
 
+        # create validation generator
+        validation_batch_size = len(validation_files) if batch_size > len(validation_files) else batch_size
         shuffled_val = copy.copy(validation_files)
         shuffle(shuffled_val)
-        valid_generator = raw_audio_generator(shuffled_val, annotations, batch_size)
+        valid_generator = raw_audio_generator(shuffled_val, annotations, validation_batch_size)
 
-        steps_per_epoch = len(training_files)/batch_size
-        validation_steps = len(validation_files)/batch_size
-        epochs = 1  # self.learner_params.get_path('training.epochs', 1)
+        steps_per_epoch = 2#len(training_files)/batch_size
+        validation_steps = 2#len(validation_files)/batch_size
 
-        hist = self.model.fit_generator(train_generator, steps_per_epoch, epochs, verbose=1,
-                                        validation_data=valid_generator, validation_steps=validation_steps,
+        # train the model
+        hist = self.model.fit_generator(train_generator,
+                                        steps_per_epoch,
+                                        self.learner_params.get_path('training.epochs', 1),
+                                        verbose=1,
+                                        validation_data=valid_generator,
+                                        validation_steps=validation_steps,
                                         callbacks=callbacks)
 
         # hist = self.model.fit(x=X_training,
