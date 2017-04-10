@@ -147,6 +147,14 @@ sets:
                 patience: 10
                 verbose: 0
                 mode: max
+            - type: ModelCheckpoint
+              parameters:
+                monitor: val_categorical_accuracy         # quantity to be monitored.
+                save_best_only: True                      # the latest best model according to the quantity monitored will not be overwritten.
+                period: 1                                 # number of epochs with no improvement after which training will be stopped.
+                verbose: 0                                # verbosity mode.
+                mode: max                                 # {auto, min, max}. In min mode, training will stop when the quantity monitored has stopped decreasing; in max mode it will stop when the quantity monitored has stopped increasing; in auto mode, the direction is automatically inferred from the name of the monitored quantity.
+                save_weights_only: False                  # if True, then only the model's weights will be saved (model.save_weights(filepath)), else the full model is saved  
         model:
           config:
             - class_name: Dense
@@ -599,7 +607,6 @@ defaults:
               patience: 10                              # number of epochs with no improvement after which training will be stopped.
               verbose: 0                                # verbosity mode.
               mode: max                                 # {auto, min, max}. In min mode, training will stop when the quantity monitored has stopped decreasing; in max mode it will stop when the quantity monitored has stopped increasing; in auto mode, the direction is automatically inferred from the name of the monitored quantity.
-
       model:
         # class_nam can be any standard Keras layer, e.g. Dense, Activation, Dropout
         # Magic parameter values: FEATURE_VECTOR_LENGTH, CLASS_COUNT
