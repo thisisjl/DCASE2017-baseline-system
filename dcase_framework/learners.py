@@ -488,7 +488,8 @@ class KerasMixin(object):
                 if layer_setup.get('class_name') == 'Dropout':
                     layer_setup['config']['input_shape'] = (input_shape,)
                 else:
-                    layer_setup['config']['input_dim'] = input_shape
+                    # layer_setup['config']['input_dim'] = input_shape
+                    layer_setup['config']['input_shape'] = input_shape
 
             elif layer_setup.get_path('config.input_dim') == 'FEATURE_VECTOR_LENGTH':
                 layer_setup['config']['input_dim'] = input_shape
@@ -1290,7 +1291,7 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
             import keras
 
         # crate generator
-        desired_fs = 44100  # self.params
+        desired_fs = 22050  # self.params
         mono = True  # self.params
 
         # frame_size = int(numpy.ceil(frame_size_sec * desired_fs))
@@ -1351,7 +1352,7 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
 
         # aa = next(rraw_audio_generator(training_files, annotations, 2))
         # TODO: find a way to get the input shape from data
-        input_shape = int(numpy.ceil(desired_fs * 10)) + 1
+        input_shape = (int(numpy.ceil(desired_fs * 10)) + 1, 1)
 
         # self.create_model(input_shape=self._get_input_size(data=data))
         self.create_model(input_shape=input_shape)
