@@ -131,7 +131,7 @@ sets:
             CNR: true
         audio:
           mono: True
-          desired_fs: 22050
+          desired_fs: 44100
           segment: True
           frame_size_sec: 10.0
 
@@ -602,8 +602,8 @@ defaults:
   # Paths
   # ==========================================================
   path:
-#    data: data/
-    data: /Users/JL/Documents/SMC10/Master-Thesis/Sound data bases/DCASE 2017/
+    data: data/
+#    data: /Users/JL/Documents/SMC10/Master-Thesis/Sound data bases/DCASE 2017/
 
     system_base: system/task1/
     feature_extractor: feature_extractor/
