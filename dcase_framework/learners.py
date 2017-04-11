@@ -1246,10 +1246,10 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
 
         # crate generator
         batch_size = self.learner_params.get_path('training.batch_size', 1)
-        mono = True
-        desired_fs = 22050
-        segment = True
-        frame_size_sec0 = 10.0
+        mono = self.learner_params.get_path('audio.mono', True)
+        desired_fs = self.learner_params.get_path('audio.desired_fs', 22050)
+        segment = self.learner_params.get_path('audio.segment', True)
+        frame_size_sec0 = self.learner_params.get_path('audio.frame_size_sec', 10.0)
 
         # create training generator
         shuffled_trn = copy.copy(training_files)
