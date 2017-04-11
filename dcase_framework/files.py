@@ -786,6 +786,8 @@ class AudioFile(FileMixin):
         self.filename = kwargs.get('filename', None)
         if self.filename:
             self.format = self.detect_file_format(self.filename)
+            if self.format == 'wav':
+                self.info = soundfile.info(file=self.filename)
 
         self.logger = kwargs.get('logger', logging.getLogger(__name__))
         if kwargs.get('logger') is None:
