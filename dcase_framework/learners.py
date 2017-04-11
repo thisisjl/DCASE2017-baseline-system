@@ -1291,68 +1291,28 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
             import keras
 
         # crate generator
-        desired_fs = 22050  # self.params
-        mono = True  # self.params
+        batch_size = self.learner_params.get_path('training.batch_size', 1)
+        mono = True
+        desired_fs = 22050
+        segment = True
+        frame_size_sec0 = 10.0
 
-        # frame_size = int(numpy.ceil(frame_size_sec * desired_fs))
-        def raw_audio_generator(split_files, _annotations, batch_size):
-            while True:
+        # create training generator
+        shuffled_trn = copy.copy(training_files)
+        shuffle(shuffled_trn)
+        train_generator = RawAudioBatcher(shuffled_trn, annotations, self.class_labels, batch_size=batch_size,
+                                          mono=mono, desired_fs=desired_fs, segment=segment,
+                                          frame_size_sec0=frame_size_sec0)#.generator()
 
-                batch_idx = 0
+        # create validation generator
+        validation_batch_size = len(validation_files) if batch_size > len(validation_files) else batch_size
+        shuffled_val = copy.copy(validation_files)
+        shuffle(shuffled_val)
+        valid_generator = RawAudioBatcher(shuffled_val, annotations, self.class_labels, batch_size=validation_batch_size,
+                                          mono=mono, desired_fs=desired_fs, segment=segment,
+                                          frame_size_sec0=frame_size_sec0)#.generator()
 
-                # for item, metadata in _annotations.items():
-                for item_filename in split_files:
-
-                    if batch_idx == 0:
-                        batch_files = []
-                        batch_data = {}
-                        batch_annotations = {}
-
-                    batch_files.append(item_filename)
-                    batch_annotations[item_filename] = _annotations[item_filename]  #metadata
-
-                    item_data, fs = AudioFile().load(item_filename, fs=desired_fs, mono=mono)
-
-                    fc = FeatureContainer()
-                    fc.feat = [item_data.reshape(1, -1)]
-
-                    batch_data[item_filename] = fc
-
-                    # TODO: segment item_data. frame_size_smp, hop_size
-
-                    if batch_idx == batch_size - 1:
-
-                        # Convert annotations into activity matrix format
-                        activity_matrix_dict = self._get_target_matrix_dict(data=batch_data,
-                                                                            annotations=batch_annotations)
-
-                        X_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
-                        Y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
-
-                        batch_idx = 0  # reinitialize batch counter
-                        yield X_training, Y_training  # output of generator
-
-                    else:
-                        batch_idx += 1
-
-                        # start_idx = 0
-                        # end_idx = frame_size
-                        # x = []
-                        # while start_idx < len(x) - frame_size:
-                        #     x.append(item_data[start_idx:end_idx])
-                        #
-                        #     start_idx += hop_size
-                        #     end_idx = start_idx + frame_size
-                        # # duration_sec = len(item_data) * fs
-
-                if not batch_idx == 0:
-                    X_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
-                    Y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
-                    yield X_training, Y_training  # output of generator
-
-        # aa = next(rraw_audio_generator(training_files, annotations, 2))
-        # TODO: find a way to get the input shape from data
-        input_shape = (int(numpy.ceil(desired_fs * 10)) + 1, 1)
+        input_shape = train_generator.get_item_shape()[1:]
 
         # self.create_model(input_shape=self._get_input_size(data=data))
         self.create_model(input_shape=input_shape)
@@ -1494,29 +1454,16 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
                 epoch=self.learner_params.get_path('training.epochs', 1))
             )
 
-        batch_size = self.learner_params.get_path('training.batch_size', 1)
-
-        # create training generator
-        shuffled_trn = copy.copy(training_files)
-        shuffle(shuffled_trn)
-        train_generator = raw_audio_generator(shuffled_trn, annotations, batch_size)
-
-        # create validation generator
-        validation_batch_size = len(validation_files) if batch_size > len(validation_files) else batch_size
-        shuffled_val = copy.copy(validation_files)
-        shuffle(shuffled_val)
-        valid_generator = raw_audio_generator(shuffled_val, annotations, validation_batch_size)
-
         # the number of training and validation steps
         steps_per_epoch = len(training_files)/batch_size
         validation_steps = len(validation_files)/batch_size
 
         # train the model
-        hist = self.model.fit_generator(train_generator,
+        hist = self.model.fit_generator(train_generator.generator(),
                                         steps_per_epoch,
                                         self.learner_params.get_path('training.epochs', 1),
                                         verbose=1,
-                                        validation_data=valid_generator,
+                                        validation_data=valid_generator.generator(),
                                         validation_steps=validation_steps,
                                         callbacks=callbacks)
 
@@ -2359,3 +2306,125 @@ class EventDetectorMLP(EventDetector, KerasMixin):
 
         return MetaDataContainer(results)
 
+
+class RawAudioBatcher():
+    def __init__(self, split_files, _annotations, class_labels, batch_size=1, mono=True,
+                 desired_fs=22050, segment=True, frame_size_sec0=5.0):
+        self.files = split_files
+        self.annotations = _annotations
+        self.batch_size = batch_size
+        self.mono = mono
+        self.desired_fs = desired_fs
+        self.segment = segment
+        self.frame_size_smp0 = int(frame_size_sec0 * desired_fs)
+
+        self.n_frames = None
+        self.frame_size_smp = None
+        self.n_channels = None
+        self.duration_smp = None
+        self.class_labels = class_labels
+
+        self.item_shape = self.get_item_shape()
+
+    def get_item_shape(self):
+        for f in self.files:
+            af_info = AudioFile(filename=f).info
+            self.n_channels = af_info.channels if not self.mono else 1
+            duration_sec = af_info.duration
+            # fs = af_info.samplerate
+            self.duration_smp = int(duration_sec * self.desired_fs)
+            break  # TODO: check if all files have same duration
+
+        if self.segment:
+
+            # compute number of frames
+            self.n_frames = int(numpy.ceil(self.duration_smp / self.frame_size_smp0))
+
+            # compute final duration of each frame
+            self.frame_size_smp = int(self.duration_smp / self.n_frames)
+
+            return self.n_frames, self.frame_size_smp, self.n_channels
+
+        else:
+            return 1, self.duration_smp, self.n_channels
+
+    def create_segments(self, audio):
+        n_channels = numpy.shape(audio)[1]
+        start = 0
+        end = self.frame_size_smp
+
+        frame_matrix = numpy.zeros((self.n_frames, self.frame_size_smp, n_channels))
+
+        for f_idx in range(self.n_frames):
+            frame_matrix[f_idx, :, :] = audio[start:end, :]
+
+            start += self.frame_size_smp
+            end = start + self.frame_size_smp
+
+        return frame_matrix
+
+    def generator(self):
+        split_files = self.files
+        _annotations = self.annotations
+
+        while True:
+
+            batch_idx = 0
+
+            # for item, metadata in _annotations.items():
+            for item_filename in split_files:
+
+                if batch_idx == 0:
+                    batch_files = []
+                    batch_data = {}
+                    batch_annotations = {}
+
+                batch_files.append(item_filename)
+                batch_annotations[item_filename] = _annotations[item_filename]  # metadata
+
+                af = AudioFile(filename=item_filename)
+                item_data_len = int(numpy.ceil(af.info.duration * self.desired_fs))
+
+                item_data0, fs = AudioFile().load(item_filename, fs=self.desired_fs, mono=self.mono)
+
+                item_data = item_data0.reshape((item_data_len, self.n_channels))
+                item_data = item_data[:int(numpy.ceil(self.duration_smp / fs - 1 / fs) * fs), :]
+
+                if self.segment:
+                    # TODO: segment with hop_size
+                    item_data = self.create_segments(item_data)
+
+                fc = FeatureContainer()
+                fc.feat = [item_data]  # [item_data.reshape(1, -1)]
+
+                batch_data[item_filename] = fc
+
+                if batch_idx == self.batch_size - 1:
+
+                    # Convert annotations into activity matrix format
+                    activity_matrix_dict = self._get_target_matrix_dict(data=batch_data,
+                                                                        annotations=batch_annotations)
+
+                    X_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
+                    Y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
+
+                    batch_idx = 0  # reinitialize batch counter
+                    yield X_training, Y_training  # output of generator
+
+                else:
+                    batch_idx += 1
+
+            if not batch_idx == 0:
+                X_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
+                Y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
+                yield X_training, Y_training  # output of generator
+
+    def _get_target_matrix_dict(self, data, annotations):
+        activity_matrix_dict = {}
+        for audio_filename in sorted(list(annotations.keys())):
+            frame_count = data[audio_filename].feat[0].shape[0]
+            pos = self.class_labels.index(annotations[audio_filename]['scene_label'])
+            roll = numpy.zeros((frame_count, len(self.class_labels)))
+            roll[:, pos] = 1
+            activity_matrix_dict[audio_filename] = roll
+        return activity_matrix_dict
