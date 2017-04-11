@@ -129,6 +129,11 @@ sets:
             openmp: false
             threads: 1
             CNR: true
+        audio:
+          mono: True
+          desired_fs: 22050
+          segment: True
+          frame_size_sec: 10.0
 
         validation:
           enable: true
@@ -137,7 +142,7 @@ sets:
 
         training:
           epochs: 200
-          batch_size: 2
+          batch_size: 256
           shuffle: true
           callbacks:
             - type: EarlyStopping
