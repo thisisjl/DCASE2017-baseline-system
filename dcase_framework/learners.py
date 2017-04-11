@@ -2333,6 +2333,7 @@ class RawAudioBatcher():
             duration_sec = af_info.duration
             # fs = af_info.samplerate
             self.duration_smp = int(duration_sec * self.desired_fs)
+            self.duration_smp = int(numpy.ceil(self.duration_smp / self.desired_fs - 1 / self.desired_fs) * self.desired_fs)
             break  # TODO: check if all files have same duration
 
         if self.segment:
