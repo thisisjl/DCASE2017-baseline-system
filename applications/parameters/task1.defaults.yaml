@@ -142,7 +142,7 @@ sets:
 
         training:
           epochs: 200
-          batch_size: 16
+          batch_size: 8
           shuffle: true
           callbacks:
             - type: EarlyStopping
@@ -424,6 +424,144 @@ sets:
         enable: true
         type: majority_vote         # [maximum, majority_vote]
 
+  - set_id: soundnet_tiny
+    description: Soundnet
+    dataset:
+      method: development
+    dataset_method_parameters:
+      development:
+        name: TUTAcousticScenes_2017_DevelopmentSet
+        fold_list: [1, 2, 3, 4]
+        evaluation_mode: folds
+    feature_stacker:
+      stacking_recipe: raw_audio
+    feature_aggregator:
+      enable: false
+      aggregation_recipe: flatten
+      win_length_seconds: 0.1
+      hop_length_seconds: 0.02
+    learner:
+      method: soundnet
+      show_model_information: false
+    learner_method_parameters:
+      soundnet:
+        seed: 1
+        keras:
+          backend: tensorflow
+          backend_parameters:
+            floatX: float64
+            device: gpu
+            fastmath: false
+            optimizer: None
+            openmp: false
+            threads: 1
+            CNR: true
+        audio:
+          mono: True
+          desired_fs: 22050
+          segment: True
+          frame_size_sec: 10.0
+
+        validation:
+          enable: true
+          setup_source: generated_scene_balanced
+          validation_amount: 0.10
+
+        training:
+          epochs: 200
+          batch_size: 8
+          shuffle: true
+          callbacks:
+            - type: EarlyStopping
+              parameters:
+                monitor: val_categorical_accuracy
+                min_delta: 0.001
+                patience: 10
+                verbose: 0
+                mode: max
+            - type: ModelCheckpoint
+              parameters:
+                monitor: val_categorical_accuracy         # quantity to be monitored.
+                save_best_only: True                      # the latest best model according to the quantity monitored will not be overwritten.
+                period: 1                                 # number of epochs with no improvement after which training will be stopped.
+                verbose: 0                                # verbosity mode.
+                mode: max                                 # {auto, min, max}. In min mode, training will stop when the quantity monitored has stopped decreasing; in max mode it will stop when the quantity monitored has stopped increasing; in auto mode, the direction is automatically inferred from the name of the monitored quantity.
+                save_weights_only: False                  # if True, then only the model's weights will be saved (model.save_weights(filepath)), else the full model is saved  
+        model:
+          config:
+            # block 1
+            - class_name: Conv1D
+              config:
+                filters: 32
+                kernel_size: 16
+                strides: 2
+                padding: valid
+                dilation_rate: 1
+                activation:
+                use_bias: True
+                kernel_initializer: glorot_uniform
+                bias_initializer: zeros
+                kernel_regularizer:
+                bias_regularizer:
+                activity_regularizer:
+                kernel_constraint:
+                bias_constraint:
+                name: conv1
+            
+            - class_name: BatchNormalization
+              config:
+                axis: -1
+                momentum: 0.99
+                epsilon: 0.001
+                center: True
+                scale: True
+                beta_initializer: zeros
+                gamma_initializer: ones 
+                moving_mean_initializer: zeros
+                moving_variance_initializer: ones
+                beta_regularizer:
+                gamma_regularizer:
+                beta_constraint:
+                gamma_constraint:
+                name: batch_norm1
+            
+            - class_name: Activation
+              config:
+                activation: relu
+                name: relu1
+            
+            - class_name: MaxPooling1D
+              config:
+                pool_size: 8
+                strides: 8
+                padding: valid
+                name: pool1
+            
+            # # this last layer is not in the original soundnet. TODO: change it
+            - class_name: Flatten
+            - class_name: Dense
+              config:
+                units: 15
+                activation: softmax
+                
+          loss: categorical_crossentropy
+
+          optimizer:
+            type: Adam
+
+          metrics:
+            - categorical_accuracy
+
+    recognizer:
+      frame_accumulation:
+        enable: false
+      frame_binarization:
+        enable: true
+        type: frame_max             # [frame_max, global_threshold]
+      decision_making:
+        enable: true
+        type: majority_vote         # [maximum, majority_vote]
+
   - set_id: dcase2017_gpu
     description: DCASE2017 baseline (GPU) using DCASE2017 task 1 development dataset
     dataset:
@@ -602,8 +740,8 @@ defaults:
   # Paths
   # ==========================================================
   path:
-    data: data/
-#    data: /Users/JL/Documents/SMC10/Master-Thesis/Sound data bases/DCASE 2017/
+#    data: data/
+    data: /Users/JL/Documents/SMC10/Master-Thesis/Sound data bases/DCASE 2017/
 
     system_base: system/task1/
     feature_extractor: feature_extractor/
