@@ -1317,6 +1317,8 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
 
         if self.show_extra_debug:
             self.log_model_summary()
+            print()
+            print(self.model.summary())
 
         # class FancyProgbarLogger(keras.callbacks.Callback):
         #     """Callback that prints metrics to stdout.
