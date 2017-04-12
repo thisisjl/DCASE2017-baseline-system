@@ -83,8 +83,6 @@ from .utils import Timer
 
 from tqdm import tqdm
 
-from random import shuffle
-
 
 def scene_classifier_factory(*args, **kwargs):
     if kwargs.get('method', None) == 'gmm':
