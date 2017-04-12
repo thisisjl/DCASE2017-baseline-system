@@ -146,6 +146,7 @@ from .ui import FancyLogger
 from .utils import get_class_inheritors, posix_path, check_pkg_resources
 from .parameters import ParameterContainer
 from .files import ParameterFile
+from random import shuffle
 
 
 class AppCore(object):
@@ -1180,7 +1181,9 @@ class AcousticSceneClassificationAppCore(AppCore):
 
                 if learner_method == 'soundnet' and feature_method == 'raw_audio':
 
-                    fold_items = self.dataset.train(fold)
+                    fold_items = copy.copy(self.dataset.train(fold))
+                    shuffle(fold_items)
+                    fold_items = fold_items[:200]
 
                     for item in fold_items:
                         fc = self.FeatureContainer()
