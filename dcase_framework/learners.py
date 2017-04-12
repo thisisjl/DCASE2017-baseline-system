@@ -1252,17 +1252,17 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
         frame_size_sec0 = self.learner_params.get_path('audio.frame_size_sec', 10.0)
 
         # create training generator
-        shuffled_trn = copy.copy(training_files)
-        shuffle(shuffled_trn)
-        train_generator = RawAudioBatcher(shuffled_trn, annotations, self.class_labels, batch_size=batch_size,
+        # shuffled_trn = copy.copy(training_files)
+        # shuffle(shuffled_trn)
+        train_generator = RawAudioBatcher(training_files, annotations, self.class_labels, batch_size=batch_size,
                                           mono=mono, desired_fs=desired_fs, segment=segment,
                                           frame_size_sec0=frame_size_sec0)#.generator()
 
         # create validation generator
         validation_batch_size = len(validation_files) if batch_size > len(validation_files) else batch_size
-        shuffled_val = copy.copy(validation_files)
-        shuffle(shuffled_val)
-        valid_generator = RawAudioBatcher(shuffled_val, annotations, self.class_labels, batch_size=validation_batch_size,
+        # shuffled_val = copy.copy(validation_files)
+        # shuffle(shuffled_val)
+        valid_generator = RawAudioBatcher(validation_files, annotations, self.class_labels, batch_size=validation_batch_size,
                                           mono=mono, desired_fs=desired_fs, segment=segment,
                                           frame_size_sec0=frame_size_sec0)#.generator()
 
@@ -1409,8 +1409,8 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
             )
 
         # the number of training and validation steps
-        steps_per_epoch = len(training_files)/batch_size
-        validation_steps = len(validation_files)/batch_size
+        steps_per_epoch = int(numpy.ceil(len(training_files) / batch_size))
+        validation_steps = int(numpy.ceil(len(validation_files)/batch_size))
 
         # train the model
         hist = self.model.fit_generator(train_generator.generator(),
@@ -2258,6 +2258,9 @@ class RawAudioBatcher():
         self.segment = segment
         self.frame_size_smp0 = int(frame_size_sec0 * desired_fs)
 
+        self.generator_sequence = copy.copy(self.files)
+
+
         self.n_frames = None
         self.frame_size_smp = None
         self.n_channels = None
@@ -2305,7 +2308,7 @@ class RawAudioBatcher():
         return frame_matrix
 
     def generator(self):
-        split_files = self.files
+        # split_files = self.files
         _annotations = self.annotations
 
         while True:
@@ -2313,7 +2316,7 @@ class RawAudioBatcher():
             batch_idx = 0
 
             # for item, metadata in _annotations.items():
-            for item_filename in split_files:
+            for item_filename in self.generator_sequence:
 
                 if batch_idx == 0:
                     batch_files = []
@@ -2346,19 +2349,23 @@ class RawAudioBatcher():
                     activity_matrix_dict = self._get_target_matrix_dict(data=batch_data,
                                                                         annotations=batch_annotations)
 
-                    X_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
-                    Y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
+                    x_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
+                    y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
+
+                    self.generator_sequence = self.generator_sequence[batch_idx+1:]
 
                     batch_idx = 0  # reinitialize batch counter
-                    yield X_training, Y_training  # output of generator
+                    yield x_training, y_training  # output of generator
 
                 else:
                     batch_idx += 1
 
             if not batch_idx == 0:
-                X_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
-                Y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
-                yield X_training, Y_training  # output of generator
+                activity_matrix_dict = self._get_target_matrix_dict(data=batch_data,
+                                                                    annotations=batch_annotations)
+                x_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
+                y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
+                yield x_training, y_training  # output of generator
 
     def _get_target_matrix_dict(self, data, annotations):
         activity_matrix_dict = {}
