@@ -525,8 +525,8 @@ class KerasMixin(object):
         """Setup keras backend and parameters"""
 
         # Get BLAS library associated to numpy
-        if numpy.__config__.blas_opt_info:
-            blas_libraries = ['']  # numpy.__config__.blas_opt_info['libraries']
+        if numpy.__config__.blas_opt_info and 'libraries' in numpy.__config__.blas_opt_info:
+            blas_libraries = numpy.__config__.blas_opt_info['libraries']
         else:
             blas_libraries = ['']
 
