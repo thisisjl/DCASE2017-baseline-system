@@ -323,7 +323,7 @@ class DictFile(dict, FileMixin):
             self.format = self.detect_file_format(self.filename)
 
         self.logger = kwargs.get('logger', logging.getLogger(__name__))
-        if kwargs.get('logger') is None:
+        if not self.logger.handlers:
             logging.basicConfig()
 
         dict.__init__(self, *args)
@@ -598,8 +598,9 @@ class ListFile(list, FileMixin):
             self.format = self.detect_file_format(self.filename)
 
         self.logger = kwargs.get('logger', logging.getLogger(__name__))
-        if kwargs.get('logger') is None:
+        if not self.logger.handlers:
             logging.basicConfig()
+
         list.__init__(self, *args)
 
     @before_and_after_function_wrapper
@@ -790,7 +791,7 @@ class AudioFile(FileMixin):
                 self.info = soundfile.info(file=self.filename)
 
         self.logger = kwargs.get('logger', logging.getLogger(__name__))
-        if kwargs.get('logger') is None:
+        if not self.logger.handlers:
             logging.basicConfig()
 
         self.fs = kwargs.get('fs', 44100)
