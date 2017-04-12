@@ -142,7 +142,7 @@ sets:
 
         training:
           epochs: 200
-          batch_size: 256
+          batch_size: 16
           shuffle: true
           callbacks:
             - type: EarlyStopping
