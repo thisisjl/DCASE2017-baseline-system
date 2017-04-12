@@ -74,7 +74,7 @@ import scipy
 from sklearn.metrics import mean_absolute_error
 
 from datetime import datetime
-from .files import DataFile
+from .files import DataFile, AudioFile
 from .containers import ContainerMixin, DottedDict
 from .features import FeatureContainer
 from .utils import SuppressStdoutAndStderr
@@ -595,7 +595,7 @@ class KerasMixin(object):
         # Show BLAS info
         if self.show_extra_debug:
             if numpy.__config__.blas_opt_info:
-                blas_libraries = numpy.__config__.blas_opt_info['libraries']
+                blas_libraries = ['']  #numpy.__config__.blas_opt_info['libraries']
                 if blas_libraries[0].startswith('openblas'):
                     self.logger.debug('  BLAS library\t[OpenBLAS]\t\t({info})'.format(info=', '.join(blas_extra_info)))
                 elif blas_libraries[0].startswith('blas'):
@@ -1241,6 +1241,265 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
     def __init__(self, *args, **kwargs):
         super(SceneClassifierSoundnet, self).__init__(*args, **kwargs)
         self.method = 'soundnet'
+
+    def learn(self, data, annotations):
+        """Learn based on data ana annotations
+
+        Parameters
+        ----------
+        data : dict of filenames
+            filenames
+        annotations : dict of MetadataContainers
+            Meta data
+
+        Returns
+        -------
+        self
+
+        """
+
+        training_files = sorted(list(annotations.keys()))  # Collect training files
+        if self.learner_params.get_path('validation.enable', False):
+            validation_files = self._generate_validation(
+                annotations=annotations,
+                validation_type=self.learner_params.get_path('validation.setup_source'),
+                valid_percentage=self.learner_params.get_path('validation.validation_amount', 0.20),
+                seed=self.learner_params.get_path('validation.seed')
+            )
+            training_files = sorted(list(set(training_files) - set(validation_files)))
+        else:
+            validation_files = []
+
+        # Double check that training and validation files are not overlapping.
+        if set(training_files).intersection(validation_files):
+            message = '{name}: Training and validation file lists are overlapping!'.format(
+                name=self.__class__.__name__
+            )
+
+            self.logger.exception(message)
+            raise ValueError(message)
+
+        self.set_seed()
+
+        self._setup_keras()
+
+        with SuppressStdoutAndStderr():
+            # Import keras and suppress backend announcement printed to stderr
+            import keras
+
+        # crate generator
+        def raw_audio_generator(_annotations, batch_size):
+
+            desired_fs = 44100  # self.params
+            mono = True  # self.params
+            # frame_size = int(numpy.ceil(frame_size_sec * desired_fs))
+
+            while True:
+
+                batch_idx = 0
+
+                for item, metadata in _annotations.items():
+
+                    if batch_idx == 0:
+                        batch_files = []
+                        batch_data = {}
+                        batch_annotations = {}
+
+                    item_filename = metadata.file
+
+                    batch_files.append(item_filename)
+                    batch_annotations[item] = metadata
+
+                    item_data, fs = AudioFile().load(item_filename, fs=desired_fs, mono=mono)
+
+                    fc = FeatureContainer()
+                    fc.feat = [item_data.reshape(1, -1)]
+
+                    batch_data[item_filename] = fc
+
+                    # TODO: segment item_data. frame_size_smp, hop_size
+
+                    if batch_idx == batch_size - 1:
+
+                        # Convert annotations into activity matrix format
+                        activity_matrix_dict = self._get_target_matrix_dict(data=batch_data, annotations=batch_annotations)
+
+                        X_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
+                        Y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
+
+                        batch_idx = 0  # reinitialize batch counter
+                        yield X_training, Y_training # output of generator
+
+                    else:
+                        batch_idx += 1
+
+                    # start_idx = 0
+                    # end_idx = frame_size
+                    # x = []
+                    # while start_idx < len(x) - frame_size:
+                    #     x.append(item_data[start_idx:end_idx])
+                    #
+                    #     start_idx += hop_size
+                    #     end_idx = start_idx + frame_size
+                    # # duration_sec = len(item_data) * fs
+
+                if not batch_idx == 0:
+                    X_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
+                    Y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
+                    yield X_training, Y_training  # output of generator
+
+        # aa = raw_audio_generator(annotations, 2)
+
+        self.create_model(input_shape=self._get_input_size(data=data))
+
+        if self.show_extra_debug:
+            self.log_model_summary()
+
+        # X_training = numpy.vstack([data[x].feat[0] for x in training_files])
+        # Y_training = numpy.vstack([activity_matrix_dict[x] for x in training_files])
+
+        class FancyProgbarLogger(keras.callbacks.Callback):
+            """Callback that prints metrics to stdout.
+            """
+
+            def __init__(self, callbacks=None, queue_length=10, metric=None, disable_progress_bar=False, log_progress=False):
+                self.metric = metric
+                self.disable_progress_bar = disable_progress_bar
+                self.log_progress = log_progress
+                self.timer = Timer()
+
+            def on_train_begin(self, logs=None):
+                self.logger = logging.getLogger(__name__)
+                self.verbose = self.params['verbose']
+                self.epochs = self.params['epochs']
+                if self.log_progress:
+                    self.logger.info('Starting training process')
+                self.pbar = tqdm(total=self.epochs,
+                                 file=sys.stdout,
+                                 desc='           {0:>15s}'.format('Learn (epoch)'),
+                                 leave=False,
+                                 miniters=1,
+                                 disable=self.disable_progress_bar
+                                 )
+
+            def on_train_end(self, logs=None):
+                self.pbar.close()
+
+            def on_epoch_begin(self, epoch, logs=None):
+                if self.log_progress:
+                    self.logger.info('  Epoch %d/%d' % (epoch + 1, self.epochs))
+                self.seen = 0
+                self.timer.start()
+
+            def on_batch_begin(self, batch, logs=None):
+                if self.seen < self.params['samples']:
+                    self.log_values = []
+
+            def on_batch_end(self, batch, logs=None):
+                logs = logs or {}
+                batch_size = logs.get('size', 0)
+                self.seen += batch_size
+
+                for k in self.params['metrics']:
+                    if k in logs:
+                        self.log_values.append((k, logs[k]))
+
+            def on_epoch_end(self, epoch, logs=None):
+                logs = logs or {}
+                postfix = {
+                    'train': None,
+                    'validation': None,
+                }
+                for k in self.params['metrics']:
+                    if k in logs:
+                        self.log_values.append((k, logs[k]))
+                        if self.metric and k.endswith(self.metric):
+                            if k.startswith('val_'):
+                                postfix['validation'] = '{:4.2f}'.format(logs[k] * 100.0)
+                            else:
+                                postfix['train'] = '{:4.2f}'.format(logs[k] * 100.0)
+                self.timer.stop()
+                if self.log_progress:
+                    self.logger.info('                train={train}, validation={validation}, time={time}'.format(
+                        train=postfix['train'],
+                        validation=postfix['validation'],
+                        time=self.timer.get_string())
+                    )
+
+                self.pbar.set_postfix(postfix)
+                self.pbar.update(1)
+
+        # Add model callbacks
+        fancy_logger = FancyProgbarLogger(metric=self.learner_params.get_path('model.metrics')[0],
+                                          disable_progress_bar=self.disable_progress_bar,
+                                          log_progress=self.log_progress)
+
+        # Callback list, always have FancyProgbarLogger
+        callbacks = [fancy_logger]
+
+        callback_params = self.learner_params.get_path('training.callbacks', [])
+        if callback_params:
+            for cp in callback_params:
+                if cp['type'] == 'ModelCheckpoint' and not cp['parameters'].get('filepath'):
+                    cp['parameters']['filepath'] = os.path.splitext(self.filename)[0] + '.weights.{epoch:02d}-{val_loss:.2f}.hdf5'
+
+                if cp['type'] == 'EarlyStopping' and cp.get('parameters').get('monitor').startswith('val_') and not self.learner_params.get_path('validation.enable', False):
+                    message = '{name}: Cannot use callback type [{type}] with monitor parameter [{monitor}] as there is no validation set.'.format(
+                        name=self.__class__.__name__,
+                        type=cp['type'],
+                        monitor=cp.get('parameters').get('monitor')
+                    )
+
+                    self.logger.exception(message)
+                    raise AttributeError(message)
+
+                try:
+                    # Get Callback class
+                    CallbackClass = getattr(importlib.import_module("keras.callbacks"), cp['type'])
+
+                    # Add callback to list
+                    callbacks.append(CallbackClass(**cp.get('parameters', {})))
+
+                except AttributeError:
+                    message = '{name}: Invalid Keras callback type [{type}]'.format(
+                        name=self.__class__.__name__,
+                        type=cp['type']
+                    )
+
+                    self.logger.exception(message)
+                    raise AttributeError(message)
+
+        self.set_seed()
+        if self.show_extra_debug:
+            self.logger.debug('  Training items \t[{examples:d}]'.format(examples=len(X_training)))
+        if validation_files:
+            X_validation = numpy.vstack([data[x].feat[0] for x in validation_files])
+            Y_validation = numpy.vstack([activity_matrix_dict[x] for x in validation_files])
+            validation = (X_validation, Y_validation)
+            if self.show_extra_debug:
+                self.logger.debug('  Validation items \t[{validation:d}]'.format(validation=len(X_validation)))
+        else:
+            validation = None
+        if self.show_extra_debug:
+            self.logger.debug('  Batch size \t[{batch:d}]'.format(
+                batch=self.learner_params.get_path('training.batch_size', 1))
+            )
+
+            self.logger.debug('  Epochs \t\t[{epoch:d}]'.format(
+                epoch=self.learner_params.get_path('training.epochs', 1))
+            )
+
+        hist = self.model.fit(x=X_training,
+                              y=Y_training,
+                              batch_size=self.learner_params.get_path('training.batch_size', 1),
+                              epochs=self.learner_params.get_path('training.epochs', 1),
+                              validation_data=validation,
+                              verbose=0,
+                              shuffle=self.learner_params.get_path('training.shuffle', True),
+                              callbacks=callbacks
+                              )
+        self['learning_history'] = hist.history
+
 
 class EventDetector(LearnerContainer):
     """Event detector (Frame classifier / Multiclass - Multilabel)"""
