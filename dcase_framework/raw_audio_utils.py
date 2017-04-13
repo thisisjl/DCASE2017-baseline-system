@@ -6,12 +6,13 @@ from .features import FeatureContainer
 
 class RawAudioBatcher():
     def __init__(self, split_files, _annotations, class_labels, batch_size=1, mono=True,
-                 desired_fs=22050, segment=True, frame_size_sec0=5.0):
+                 desired_fs=22050, segment=True, frame_size_sec0=5.0, normalize=False):
         self.files = split_files
         self.annotations = _annotations
         self.batch_size = batch_size
         self.mono = mono
         self.desired_fs = desired_fs
+        self.normalize = normalize
         self.segment = segment
         self.frame_size_smp0 = int(frame_size_sec0 * desired_fs)
 
@@ -50,14 +51,14 @@ class RawAudioBatcher():
             return 1, self.duration_smp, self.n_channels
 
     def create_segments(self, audio):
-        n_channels = numpy.shape(audio)[1]
+        n_channels = numpy.shape(audio)[-1]
         start = 0
         end = self.frame_size_smp
 
         frame_matrix = numpy.zeros((self.n_frames, self.frame_size_smp, n_channels))
 
         for f_idx in range(self.n_frames):
-            frame_matrix[f_idx, :, :] = audio[start:end, :]
+            frame_matrix[f_idx, :, :] = audio[:, start:end, :]
 
             start += self.frame_size_smp
             end = start + self.frame_size_smp
@@ -72,7 +73,6 @@ class RawAudioBatcher():
 
             batch_idx = 0
 
-            # for item, metadata in _annotations.items():
             for item_filename in self.generator_sequence:
 
                 if batch_idx == 0:
@@ -88,17 +88,22 @@ class RawAudioBatcher():
 
                 item_data0, fs = AudioFile().load(item_filename, fs=self.desired_fs, mono=self.mono)
 
-                item_data = item_data0.reshape((item_data_len, self.n_channels))
-                item_data = item_data[:int(numpy.ceil(self.duration_smp / fs - 1 / fs) * fs), :]
+                item_data = item_data0.reshape((self.n_channels, item_data_len, 1)).T
+                item_data = item_data[:, :int(numpy.ceil(self.duration_smp / fs - 1 / fs) * fs), :]
 
                 if self.segment:
                     # TODO: segment with hop_size
                     item_data = self.create_segments(item_data)
-                else:
-                    item_data = item_data.T
+
+                if self.normalize:
+                    n_segments = item_data.shape[0]
+                    n_channels = item_data.shape[-1]
+                    for segment in range(n_segments):
+                        norm_val = numpy.max(numpy.max(numpy.abs(item_data[segment]), axis=1 if n_channels == 2 else 0))
+                        item_data[segment] /= norm_val
 
                 fc = FeatureContainer()
-                fc.feat = [item_data]  # [item_data.reshape(1, -1)]
+                fc.feat = [item_data]
 
                 batch_data[item_filename] = fc
 
@@ -108,12 +113,9 @@ class RawAudioBatcher():
                     activity_matrix_dict = self._get_target_matrix_dict(data=batch_data,
                                                                         annotations=batch_annotations)
 
-                    if self.segment:
-                        x_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
-                        y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
-                    else:
-                        x_training = [batch_data[x].feat[0].T for x in batch_files]
-                        y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
+                    # if self.segment:
+                    x_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
+                    y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
 
                     self.generator_sequence = self.generator_sequence[batch_idx+1:]
 
@@ -127,12 +129,8 @@ class RawAudioBatcher():
                 activity_matrix_dict = self._get_target_matrix_dict(data=batch_data,
                                                                     annotations=batch_annotations)
 
-                if self.segment:
-                    x_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
-                    y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
-                else:
-                    x_training = [batch_data[x].feat[0].T for x in batch_files]
-                    y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
+                x_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
+                y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
 
                 yield x_training, y_training  # output of generator
 
