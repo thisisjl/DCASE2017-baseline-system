@@ -94,6 +94,8 @@ class RawAudioBatcher():
                 if self.segment:
                     # TODO: segment with hop_size
                     item_data = self.create_segments(item_data)
+                else:
+                    item_data = item_data.T
 
                 fc = FeatureContainer()
                 fc.feat = [item_data]  # [item_data.reshape(1, -1)]
@@ -106,8 +108,12 @@ class RawAudioBatcher():
                     activity_matrix_dict = self._get_target_matrix_dict(data=batch_data,
                                                                         annotations=batch_annotations)
 
-                    x_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
-                    y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
+                    if self.segment:
+                        x_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
+                        y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
+                    else:
+                        x_training = [batch_data[x].feat[0].T for x in batch_files]
+                        y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
 
                     self.generator_sequence = self.generator_sequence[batch_idx+1:]
 
@@ -120,8 +126,14 @@ class RawAudioBatcher():
             if not batch_idx == 0:
                 activity_matrix_dict = self._get_target_matrix_dict(data=batch_data,
                                                                     annotations=batch_annotations)
-                x_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
-                y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
+
+                if self.segment:
+                    x_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
+                    y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
+                else:
+                    x_training = [batch_data[x].feat[0].T for x in batch_files]
+                    y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
+
                 yield x_training, y_training  # output of generator
 
     def _get_target_matrix_dict(self, data, annotations):
