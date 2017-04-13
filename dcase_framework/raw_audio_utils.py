@@ -7,6 +7,35 @@ from .features import FeatureContainer
 class RawAudioBatcher():
     def __init__(self, split_files, _annotations, class_labels, batch_size=1, mono=True,
                  desired_fs=22050, segment=True, frame_size_sec0=5.0, normalize=False):
+        """
+        RawAudioBatcher allows to create batches from audio data.
+        It contains a generator method that can be used as input to the method fit_generator of a
+        Keras neural network model with audio waveforms.
+
+        Parameters
+        ----------
+        split_files : list
+            Full list of audio files to load
+        _annotations : dict
+            Dictionary containing a nested dictionary for each audio file in split_files.
+            The nested dictionary must contain the keys 'file', 'identifier' and'scene_label'. Example:
+            {'a001_140_150.wav': {'file':'a001_140_150.wav', 'identifier': 'a001', 'scene_label': 'residential_area'}
+
+        class_labels : list
+            All possible class labels
+        batch_size : int
+            Number of audio files to load and output
+        mono : bool
+            If True the audio file will be mixed down to a mono file
+        desired_fs : int
+            Sampling frequency of the output data
+        segment : bool
+            Separate the audio file into segments. Its duration defined by frame_size_sec0.
+        frame_size_sec0 : float
+            number of seconds of each segment if segment is True
+        normalize : bool
+            Normalize output values between 0 and 1. If mono is False, channels are normalized with the same value.
+        """
         self.files = split_files
         self.annotations = _annotations
         self.batch_size = batch_size
