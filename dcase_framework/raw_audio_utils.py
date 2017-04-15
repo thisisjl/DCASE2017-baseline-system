@@ -1,3 +1,4 @@
+import os
 import copy
 import numpy
 from .files import AudioFile
@@ -110,31 +111,11 @@ class RawAudioBatcher():
                     batch_annotations = {}
 
                 batch_files.append(item_filename)
-                batch_annotations[item_filename] = _annotations[item_filename]  # metadata
+                batch_annotations[item_filename] = _annotations[item_filename]
 
-                af = AudioFile(filename=item_filename)
-                item_data_len = int(numpy.ceil(af.info.duration * self.desired_fs))
+                item_data = self.get_item_data(item_filename)
 
-                item_data0, fs = AudioFile().load(item_filename, fs=self.desired_fs, mono=self.mono)
-
-                item_data = item_data0.reshape((self.n_channels, item_data_len, 1)).T
-                item_data = item_data[:, :int(numpy.ceil(self.duration_smp / fs - 1 / fs) * fs), :]
-
-                if self.segment:
-                    # TODO: segment with hop_size
-                    item_data = self.create_segments(item_data)
-
-                if self.normalize:
-                    n_segments = item_data.shape[0]
-                    n_channels = item_data.shape[-1]
-                    for segment in range(n_segments):
-                        norm_val = numpy.max(numpy.max(numpy.abs(item_data[segment]), axis=1 if n_channels == 2 else 0))
-                        item_data[segment] /= norm_val
-
-                fc = FeatureContainer()
-                fc.feat = [item_data]
-
-                batch_data[item_filename] = fc
+                batch_data[item_filename] = item_data
 
                 if batch_idx == self.batch_size - 1:
 
@@ -172,3 +153,65 @@ class RawAudioBatcher():
             roll[:, pos] = 1
             activity_matrix_dict[audio_filename] = roll
         return activity_matrix_dict
+
+    def get_item_data(self, item_filename):
+
+        if os.path.isfile(item_filename):
+            af = AudioFile(filename=item_filename)
+            item_data_len = int(numpy.ceil(af.info.duration * self.desired_fs))
+
+            item_data0, fs = AudioFile().load(item_filename, fs=self.desired_fs, mono=self.mono)
+
+            item_data = item_data0.reshape((self.n_channels, item_data_len, 1)).T
+            item_data = item_data[:, :int(numpy.ceil(self.duration_smp / fs - 1 / fs) * fs), :]
+
+            if self.segment:
+                # TODO: segment with hop_size
+                item_data = self.create_segments(item_data)
+
+            if self.normalize:
+                n_segments = item_data.shape[0]
+                n_channels = item_data.shape[-1]
+                for segment in range(n_segments):
+                    norm_val = numpy.max(numpy.max(numpy.abs(item_data[segment]), axis=1 if n_channels == 2 else 0))
+                    item_data[segment] /= norm_val
+
+            fc = FeatureContainer()
+            fc.feat = [item_data]
+        else:
+            raise IOError("File not found [%s]" % (item['file']))
+
+        return fc
+
+    def create_batch(self, batch_size=None, fold=None, split=None, return_item_name=False):
+
+        if split is not None:
+            self.split = split
+        if fold is not None:
+            self.fold = fold
+        if batch_size is not None:
+            self.batch_size = batch_size
+
+        self.items_dict, self.num_items = self.get_dataset_items()
+
+        order = np.random.permutation(self.num_items)
+
+        self.reset_output_arrays(return_item_name)
+
+        for item_idx in order[:self.batch_size]:
+            item = getattr(self.dataset, self.split)(self.fold)[item_idx]
+
+            item_label_code = self.get_item_label_code(item)
+            item_data = self.get_item_data(item)
+
+            # add to output lists
+            self.batch_data.append(item_data)
+            self.batch_labels = np.vstack((self.batch_labels, item_label_code))
+            if return_item_name:
+                self.batch_names.append(self.dataset.absolute_to_relative(item['file']))
+
+        if return_item_name:
+            return np.array(self.batch_data), self.batch_labels, self.batch_names
+        else:
+            return np.array(self.batch_data), np.vstack(np.array(self.batch_labels))
+
