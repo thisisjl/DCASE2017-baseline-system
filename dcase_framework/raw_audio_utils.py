@@ -48,7 +48,6 @@ class RawAudioBatcher():
 
         self.generator_sequence = copy.copy(self.files)
 
-
         self.n_frames = None
         self.frame_size_smp = None
         self.n_channels = None
@@ -56,6 +55,10 @@ class RawAudioBatcher():
         self.class_labels = class_labels
 
         self.item_shape = self.get_item_shape()
+
+        self.batch_files = []
+        self.batch_data = {}
+        self.batch_annotations = {}
 
     def get_item_shape(self):
         for f in self.files:
@@ -123,7 +126,6 @@ class RawAudioBatcher():
                     activity_matrix_dict = self._get_target_matrix_dict(data=batch_data,
                                                                         annotations=batch_annotations)
 
-                    # if self.segment:
                     x_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
                     y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
 
@@ -183,35 +185,35 @@ class RawAudioBatcher():
 
         return fc
 
-    def create_batch(self, batch_size=None, fold=None, split=None, return_item_name=False):
+    def create_batch(self, batch_size=None, return_item_name=False):
 
-        if split is not None:
-            self.split = split
-        if fold is not None:
-            self.fold = fold
         if batch_size is not None:
             self.batch_size = batch_size
 
-        self.items_dict, self.num_items = self.get_dataset_items()
+        self.reset_output_arrays()
 
-        order = np.random.permutation(self.num_items)
+        # for item_filename in order[:self.batch_size]:
+        for item_filename in self.files[:self.batch_size]:
 
-        self.reset_output_arrays(return_item_name)
+            self.batch_files.append(item_filename)
+            self.batch_annotations[item_filename] = self.annotations[item_filename]
+            self.batch_data[item_filename] = self.get_item_data(item_filename)
 
-        for item_idx in order[:self.batch_size]:
-            item = getattr(self.dataset, self.split)(self.fold)[item_idx]
+        # Convert annotations into activity matrix format
+        activity_matrix_dict = self._get_target_matrix_dict(data=self.batch_data,
+                                                            annotations=self.batch_annotations)
 
-            item_label_code = self.get_item_label_code(item)
-            item_data = self.get_item_data(item)
-
-            # add to output lists
-            self.batch_data.append(item_data)
-            self.batch_labels = np.vstack((self.batch_labels, item_label_code))
-            if return_item_name:
-                self.batch_names.append(self.dataset.absolute_to_relative(item['file']))
+        x_training = numpy.vstack([self.batch_data[x].feat[0] for x in self.batch_files])
+        y_training = numpy.vstack([activity_matrix_dict[x] for x in self.batch_files])
 
         if return_item_name:
-            return np.array(self.batch_data), self.batch_labels, self.batch_names
+            return x_training, y_training, self.batch_files
         else:
-            return np.array(self.batch_data), np.vstack(np.array(self.batch_labels))
+            return x_training, y_training
+
+    def reset_output_arrays(self):
+        self.batch_files = []
+        self.batch_data = {}
+        self.batch_annotations = {}
+        pass
 
