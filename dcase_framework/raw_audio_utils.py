@@ -109,42 +109,31 @@ class RawAudioBatcher():
             for item_filename in self.generator_sequence:
 
                 if batch_idx == 0:
-                    batch_files = []
-                    batch_data = {}
-                    batch_annotations = {}
+                    self.reset_output_arrays()
 
-                batch_files.append(item_filename)
-                batch_annotations[item_filename] = _annotations[item_filename]
+                self.batch_files.append(item_filename)
+                self.batch_annotations[item_filename] = _annotations[item_filename]
 
                 item_data = self.get_item_data(item_filename)
 
-                batch_data[item_filename] = item_data
+                self.batch_data[item_filename] = item_data
 
                 if batch_idx == self.batch_size - 1:
 
-                    # Convert annotations into activity matrix format
-                    activity_matrix_dict = self._get_target_matrix_dict(data=batch_data,
-                                                                        annotations=batch_annotations)
+                    batch_idx = 0                                                       # reinitialize batch counter
+                    self.generator_sequence = self.generator_sequence[batch_idx + 1:]   # remove used files
 
-                    x_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
-                    y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
-
-                    self.generator_sequence = self.generator_sequence[batch_idx+1:]
-
-                    batch_idx = 0  # reinitialize batch counter
-                    yield x_training, y_training  # output of generator
+                    # output of generator
+                    x_training, y_training = self.process_output()
+                    yield x_training, y_training
 
                 else:
                     batch_idx += 1
 
             if not batch_idx == 0:
-                activity_matrix_dict = self._get_target_matrix_dict(data=batch_data,
-                                                                    annotations=batch_annotations)
-
-                x_training = numpy.vstack([batch_data[x].feat[0] for x in batch_files])
-                y_training = numpy.vstack([activity_matrix_dict[x] for x in batch_files])
-
-                yield x_training, y_training  # output of generator
+                # output of generator
+                x_training, y_training = self.process_output()
+                yield x_training, y_training
 
     def _get_target_matrix_dict(self, data, annotations):
         activity_matrix_dict = {}
@@ -199,12 +188,8 @@ class RawAudioBatcher():
             self.batch_annotations[item_filename] = self.annotations[item_filename]
             self.batch_data[item_filename] = self.get_item_data(item_filename)
 
-        # Convert annotations into activity matrix format
-        activity_matrix_dict = self._get_target_matrix_dict(data=self.batch_data,
-                                                            annotations=self.batch_annotations)
-
-        x_training = numpy.vstack([self.batch_data[x].feat[0] for x in self.batch_files])
-        y_training = numpy.vstack([activity_matrix_dict[x] for x in self.batch_files])
+        # output of generator
+        x_training, y_training = self.process_output()
 
         if return_item_name:
             return x_training, y_training, self.batch_files
@@ -216,4 +201,14 @@ class RawAudioBatcher():
         self.batch_data = {}
         self.batch_annotations = {}
         pass
+
+    def process_output(self):
+
+        # Convert annotations into activity matrix format
+        activity_matrix_dict = self._get_target_matrix_dict(data=self.batch_data, annotations=self.batch_annotations)
+
+        x_training = numpy.vstack([self.batch_data[x].feat[0] for x in self.batch_files])
+        y_training = numpy.vstack([activity_matrix_dict[x] for x in self.batch_files])
+
+        return x_training, y_training
 
