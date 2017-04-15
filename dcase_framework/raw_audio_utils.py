@@ -120,7 +120,6 @@ class RawAudioBatcher():
                 self.batch_data[item_filename] = item_data
 
                 if batch_idx == self.batch_size - 1:
-                    print('yielding batch: {}'.format([os.path.basename(i) for i in self.batch_files]))
 
                     batch_idx = 0                                                       # reinitialize batch counter
 
