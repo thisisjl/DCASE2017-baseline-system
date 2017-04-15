@@ -104,8 +104,7 @@ class RawAudioBatcher():
         # split_files = self.files
         _annotations = self.annotations
 
-        # while True:
-        while len(self.generator_sequence) > 0:
+        while True:
             batch_idx = 0
 
             for item_filename in self.generator_sequence:
@@ -121,9 +120,9 @@ class RawAudioBatcher():
                 self.batch_data[item_filename] = item_data
 
                 if batch_idx == self.batch_size - 1:
+                    print('yielding batch: {}'.format([os.path.basename(i) for i in self.batch_files]))
 
                     batch_idx = 0                                                       # reinitialize batch counter
-                    self.generator_sequence = self.generator_sequence[batch_idx + 1:]   # remove used files
 
                     # output of generator
                     x_training, y_training = self.process_output()
