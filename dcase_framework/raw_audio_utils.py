@@ -104,8 +104,8 @@ class RawAudioBatcher():
         # split_files = self.files
         _annotations = self.annotations
 
-        while True:
-
+        # while True:
+        while len(self.generator_sequence) > 0:
             batch_idx = 0
 
             for item_filename in self.generator_sequence:
