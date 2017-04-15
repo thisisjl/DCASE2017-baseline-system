@@ -60,6 +60,8 @@ class RawAudioBatcher():
         self.batch_data = {}
         self.batch_annotations = {}
 
+        self.n_batches = None
+
     def get_item_shape(self):
         for f in self.files:
             af_info = AudioFile(filename=f).info
@@ -211,4 +213,9 @@ class RawAudioBatcher():
         y_training = numpy.vstack([activity_matrix_dict[x] for x in self.batch_files])
 
         return x_training, y_training
+
+    def get_num_batches(self):
+        if self.n_batches is None:
+            self.n_batches = int(numpy.ceil(len(self.files)/self.batch_size))
+        return self.n_batches
 
