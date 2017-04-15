@@ -1289,40 +1289,25 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
             # Import keras and suppress backend announcement printed to stderr
             import keras
 
-        # crate generator
+        # crate training and validation batch generators
         batch_size = self.learner_params.get_path('training.batch_size', 1)
         mono = self.learner_params.get_path('audio.mono', True)
         desired_fs = self.learner_params.get_path('audio.desired_fs', 22050)
         segment = self.learner_params.get_path('audio.segment', True)
         frame_size_sec0 = self.learner_params.get_path('audio.frame_size_sec', 10.0)
 
-        # create training batcher
-        # train_batcher = RawAudioBatcher(training_files, annotations, self.class_labels, batch_size=batch_size,
-        #                                   mono=mono, desired_fs=desired_fs, segment=segment,
-        #                                   frame_size_sec0=frame_size_sec0)
+        train_batcher = RawAudioBatcher(
+            training_files, annotations, self.class_labels, batch_size,mono, desired_fs, segment, frame_size_sec0)
 
-        # create validation batcher
-        # validation_batch_size = len(validation_files) if batch_size > len(validation_files) else batch_size
-        # valid_batcher = RawAudioBatcher(validation_files, annotations, self.class_labels, batch_size=validation_batch_size,
-        #                                   mono=mono, desired_fs=desired_fs, segment=segment,
-        #                                   frame_size_sec0=frame_size_sec0)
-
-        # input_shape = train_generator.get_item_shape()[1:]
-
-        train_batcher = RawAudioBatcher(training_files, annotations, self.class_labels, batch_size=batch_size,
-                                          mono=mono, desired_fs=desired_fs, segment=segment,
-                                          frame_size_sec0=frame_size_sec0)
-        valid_batcher = RawAudioBatcher(validation_files, annotations, self.class_labels, batch_size=batch_size,
-                                        mono=mono, desired_fs=desired_fs, segment=segment,
-                                        frame_size_sec0=frame_size_sec0)
+        valid_batcher = RawAudioBatcher(
+            validation_files, annotations, self.class_labels, batch_size, mono, desired_fs, segment, frame_size_sec0)
 
         input_shape = train_batcher.get_item_shape()[1:]
 
         self.create_model(input_shape=input_shape)
 
         if self.show_extra_debug:
-            self.log_model_summary()
-            print()
+            # self.log_model_summary()
             print(self.model.summary())
 
         # class FancyProgbarLogger(keras.callbacks.Callback):
@@ -1459,30 +1444,15 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
                 epoch=self.learner_params.get_path('training.epochs', 1))
             )
 
-        # the number of training and validation steps
-        steps_per_epoch = int(numpy.ceil(len(training_files) / batch_size))
-        validation_steps = int(numpy.ceil(len(validation_files)/batch_size))
-
         # train the model
-        # hist = self.model.fit_generator(train_generator.generator(),
-        #                                 steps_per_epoch,
-        #                                 self.learner_params.get_path('training.epochs', 1),
-        #                                 verbose=1,
-        #                                 validation_data=valid_generator.generator(),
-        #                                 validation_steps=validation_steps,
-        #                                 callbacks=callbacks)
-
-        x, y = train_batcher.create_batch(batch_size=2)
-
-        print('in train')
-        hist = self.model.train_on_batch(x, y)
-
-        x, y = valid_batcher.create_batch(batch_size=2)
-
-        print('in test')
-        test_out = self.model.test_on_batch(x, y)
-
-        print(test_out)
+        hist = self.model.fit_generator(train_batcher.generator(),
+                                        train_batcher.get_num_batches(),
+                                        self.learner_params.get_path('training.epochs', 1),
+                                        verbose=1,
+                                        validation_data=valid_batcher.generator(),
+                                        validation_steps=valid_batcher.get_num_batches(),
+                                        callbacks=callbacks,
+                                        max_q_size=2)
 
         self['learning_history'] = hist.history
 
