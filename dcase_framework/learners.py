@@ -1296,24 +1296,28 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
         segment = self.learner_params.get_path('audio.segment', True)
         frame_size_sec0 = self.learner_params.get_path('audio.frame_size_sec', 10.0)
 
-        # create training generator
-        # shuffled_trn = copy.copy(training_files)
-        # shuffle(shuffled_trn)
-        train_generator = RawAudioBatcher(training_files, annotations, self.class_labels, batch_size=batch_size,
+        # create training batcher
+        # train_batcher = RawAudioBatcher(training_files, annotations, self.class_labels, batch_size=batch_size,
+        #                                   mono=mono, desired_fs=desired_fs, segment=segment,
+        #                                   frame_size_sec0=frame_size_sec0)
+
+        # create validation batcher
+        # validation_batch_size = len(validation_files) if batch_size > len(validation_files) else batch_size
+        # valid_batcher = RawAudioBatcher(validation_files, annotations, self.class_labels, batch_size=validation_batch_size,
+        #                                   mono=mono, desired_fs=desired_fs, segment=segment,
+        #                                   frame_size_sec0=frame_size_sec0)
+
+        # input_shape = train_generator.get_item_shape()[1:]
+
+        train_batcher = RawAudioBatcher(training_files, annotations, self.class_labels, batch_size=batch_size,
                                           mono=mono, desired_fs=desired_fs, segment=segment,
-                                          frame_size_sec0=frame_size_sec0)#.generator()
+                                          frame_size_sec0=frame_size_sec0)
+        valid_batcher = RawAudioBatcher(validation_files, annotations, self.class_labels, batch_size=batch_size,
+                                        mono=mono, desired_fs=desired_fs, segment=segment,
+                                        frame_size_sec0=frame_size_sec0)
 
-        # create validation generator
-        validation_batch_size = len(validation_files) if batch_size > len(validation_files) else batch_size
-        # shuffled_val = copy.copy(validation_files)
-        # shuffle(shuffled_val)
-        valid_generator = RawAudioBatcher(validation_files, annotations, self.class_labels, batch_size=validation_batch_size,
-                                          mono=mono, desired_fs=desired_fs, segment=segment,
-                                          frame_size_sec0=frame_size_sec0)#.generator()
+        input_shape = train_batcher.get_item_shape()[1:]
 
-        input_shape = train_generator.get_item_shape()[1:]
-
-        # self.create_model(input_shape=self._get_input_size(data=data))
         self.create_model(input_shape=input_shape)
 
         if self.show_extra_debug:
@@ -1460,13 +1464,25 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
         validation_steps = int(numpy.ceil(len(validation_files)/batch_size))
 
         # train the model
-        hist = self.model.fit_generator(train_generator.generator(),
-                                        steps_per_epoch,
-                                        self.learner_params.get_path('training.epochs', 1),
-                                        verbose=1,
-                                        validation_data=valid_generator.generator(),
-                                        validation_steps=validation_steps,
-                                        callbacks=callbacks)
+        # hist = self.model.fit_generator(train_generator.generator(),
+        #                                 steps_per_epoch,
+        #                                 self.learner_params.get_path('training.epochs', 1),
+        #                                 verbose=1,
+        #                                 validation_data=valid_generator.generator(),
+        #                                 validation_steps=validation_steps,
+        #                                 callbacks=callbacks)
+
+        x, y = train_batcher.create_batch(batch_size=2)
+
+        print('in train')
+        hist = self.model.train_on_batch(x, y)
+
+        x, y = valid_batcher.create_batch(batch_size=2)
+
+        print('in test')
+        test_out = self.model.test_on_batch(x, y)
+
+        print(test_out)
 
         self['learning_history'] = hist.history
 
