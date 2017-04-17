@@ -70,7 +70,7 @@ class RawAudioBatcher():
         self.n_batches = None
 
         # data augmentation parameters
-        self.enable_augmentation = augmentation_params['enable']
+        self.enable_augmentation = getattr(augmentation_params, 'enable', False)
         if self.enable_augmentation:
             self.augmentation_samples = None
             self.augmentation_chain = self.create_augmentation_chain(augmentation_params)
