@@ -134,6 +134,7 @@ sets:
           desired_fs: 16000
           segment: True
           frame_size_sec: 5.0
+          normalize: True
 
         validation:
           enable: true
@@ -433,6 +434,30 @@ sets:
 
           metrics:
             - categorical_accuracy
+
+        data_augmentation:
+          enable: false
+          chain_type: Union
+          jams_path:
+          config:
+            - class_name: LinearPitchShift
+              config:
+                n_samples: 1
+                lower: -1
+                upper: 1
+
+            - class_name: TimeStretch
+              config:
+                rate: 1.2
+            
+            - class_name: DynamicRangeCompression
+              config:
+                preset: radio
+            
+            - class_name: DynamicRangeCompression
+              config:
+                preset: speech
+
 
     recognizer:
       frame_accumulation:
