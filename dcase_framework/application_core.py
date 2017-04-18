@@ -1179,11 +1179,10 @@ class AcousticSceneClassificationAppCore(AppCore):
                 learner_method = self.params.get_path('learner.method')
                 feature_method = self.params['feature_stacker']['stacking_recipe'][0]['method']
 
-                if learner_method == 'soundnet' and feature_method == 'raw_audio':
+                if learner_method in ['convolutional'] and feature_method == 'raw_audio':
 
                     fold_items = copy.copy(self.dataset.train(fold))
                     shuffle(fold_items)
-                    fold_items = fold_items[:200]
 
                     for item in fold_items:
                         fc = self.FeatureContainer()
