@@ -477,8 +477,8 @@ sets:
         enable: true
         type: majority_vote         # [maximum, majority_vote]
 
-  - set_id: soundnet_tiny
-    description: Soundnet
+  - set_id: dieleman2014
+    description: Architecture described in "End to end Learning for music audio" by Sander Dieleman and Benjamin Schrauwen (2014)
     dataset:
       method: development
     dataset_method_parameters:
@@ -511,9 +511,9 @@ sets:
             CNR: true
         audio:
           mono: True
-          desired_fs: 22050
+          desired_fs: 16000
           segment: True
-          frame_size_sec: 5.0
+          frame_size_sec: 4.0
 
         validation:
           enable: true
@@ -521,8 +521,8 @@ sets:
           validation_amount: 0.10
 
         training:
-          epochs: 2
-          batch_size: 1
+          epochs: 200
+          batch_size: 10
           shuffle: true
           callbacks:
             - type: EarlyStopping
@@ -542,41 +542,21 @@ sets:
                 save_weights_only: False                  # if True, then only the model's weights will be saved (model.save_weights(filepath)), else the full model is saved  
         model:
           config:
-            # block 1
             - class_name: Conv1D
               config:
                 filters: 32
-                kernel_size: 16
-                strides: 2
+                kernel_size: 8
+                strides: 1024
                 padding: valid
                 dilation_rate: 1
                 activation:
-                use_bias: True
-                kernel_initializer: glorot_uniform
-                bias_initializer: zeros
-                kernel_regularizer:
-                bias_regularizer:
-                activity_regularizer:
-                kernel_constraint:
-                bias_constraint:
-                name: conv1
+                name: strided convolution
             
-            - class_name: BatchNormalization
+            - class_name: Conv1D
               config:
-                axis: -1
-                momentum: 0.99
-                epsilon: 0.001
-                center: True
-                scale: True
-                beta_initializer: zeros
-                gamma_initializer: ones 
-                moving_mean_initializer: zeros
-                moving_variance_initializer: ones
-                beta_regularizer:
-                gamma_regularizer:
-                beta_constraint:
-                gamma_constraint:
-                name: batch_norm1
+                filters: 32
+                kernel_size: 8
+                name: conv1                
             
             - class_name: Activation
               config:
@@ -585,18 +565,47 @@ sets:
             
             - class_name: MaxPooling1D
               config:
-                pool_size: 8
-                strides: 8
-                padding: valid
+                pool_size: 4
                 name: pool1
             
-            # # this last layer is not in the original soundnet. TODO: change it
+            - class_name: Conv1D
+              config:
+                filters: 32
+                kernel_size: 8
+                name: conv2                
+            
+            - class_name: Activation
+              config:
+                activation: relu
+                name: relu2
+            
+            - class_name: MaxPooling1D
+              config:
+                pool_size: 4
+                name: pool2
+
             - class_name: Flatten
+            
+            - class_name: Dense
+              config:
+                units: 100
+                kernel_initializer: uniform
+                activation: relu
+
             - class_name: Dense
               config:
                 units: 15
-                activation: softmax
+                kernel_initializer: uniform
+                activation: sigmoid
+
                 
+          conv_kernel: 
+            class: RandomNormal
+            config:
+              mean: 0.0
+              stddev: 0.01
+              seed:
+          
           loss: categorical_crossentropy
 
           optimizer:
