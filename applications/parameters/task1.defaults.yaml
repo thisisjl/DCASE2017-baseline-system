@@ -114,10 +114,10 @@ sets:
       win_length_seconds: 0.1
       hop_length_seconds: 0.02
     learner:
-      method: soundnet
+      method: convolutional
       show_model_information: false
     learner_method_parameters:
-      soundnet:
+      convolutional:
         seed: 1
         keras:
           backend: tensorflow
@@ -494,10 +494,10 @@ sets:
       win_length_seconds: 0.1
       hop_length_seconds: 0.02
     learner:
-      method: soundnet
+      method: convolutional
       show_model_information: false
     learner_method_parameters:
-      soundnet:
+      convolutional:
         seed: 1
         keras:
           backend: theano
