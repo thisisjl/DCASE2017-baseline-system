@@ -1237,12 +1237,12 @@ class SceneClassifierMLP(SceneClassifier, KerasMixin):
         return self.model.predict(x=feature_data).T
 
 
-class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
-    """Scene classifier with Soundnet"""
+class SceneClassifierConvolutional(SceneClassifier, KerasMixin):
+    """Scene classifier with Convolutional models"""
 
     def __init__(self, *args, **kwargs):
-        super(SceneClassifierSoundnet, self).__init__(*args, **kwargs)
-        self.method = 'soundnet'
+        super(SceneClassifierConvolutional, self).__init__(*args, **kwargs)
+        self.method = 'convolutional'
 
     def create_model(self, input_shape):
         from keras.models import Sequential
