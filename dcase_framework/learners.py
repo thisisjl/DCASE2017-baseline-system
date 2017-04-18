@@ -1295,9 +1295,11 @@ class SceneClassifierSoundnet(SceneClassifier, KerasMixin):
         desired_fs = self.learner_params.get_path('audio.desired_fs', 22050)
         segment = self.learner_params.get_path('audio.segment', True)
         frame_size_sec0 = self.learner_params.get_path('audio.frame_size_sec', 10.0)
+        normalize = self.learner_params.get_path('audio.normalize', True)
+        augment_params = self.learner_params['audio']['data_augmentation']
 
-        train_batcher = RawAudioBatcher(
-            training_files, annotations, self.class_labels, batch_size,mono, desired_fs, segment, frame_size_sec0)
+        train_batcher = RawAudioBatcher(training_files, annotations, self.class_labels, batch_size,
+                                        mono, desired_fs, segment, frame_size_sec0, normalize, augment_params)
 
         valid_batcher = RawAudioBatcher(
             validation_files, annotations, self.class_labels, batch_size, mono, desired_fs, segment, frame_size_sec0)
