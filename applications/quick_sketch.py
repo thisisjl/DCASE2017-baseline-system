@@ -116,7 +116,7 @@ def main(argv):
     # magnatagatune_audio_path = '/Users/JL/Documents/SMC10/Master-Thesis/Sound data bases/MagnatagatuneDataset/audio'
     magnatagatune_audio_path = '../../MagnatagatuneDataset/audio'
     # magnatagatune_meta = '/Users/JL/Documents/SMC10/Master-Thesis/Sound data bases/MagnatagatuneDataset/index/meta.csv'
-    magnatagatune_meta = '../../MagnatagatuneDataset/index'
+    magnatagatune_meta = '../../MagnatagatuneDataset/index/meta.csv'
     magna_meta = pd.read_csv(magnatagatune_meta)
 
     meta_folds = magna_meta[magna_meta['fold'].isin(train_folds)]
