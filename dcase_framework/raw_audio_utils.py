@@ -4,6 +4,8 @@ import numpy
 import importlib
 import muda
 import jams
+import audioread
+import librosa
 from .files import AudioFile
 from .features import FeatureContainer
 
@@ -158,6 +160,35 @@ class RawAudioBatcher():
             roll[:, pos] = 1
             activity_matrix_dict[audio_filename] = roll
         return activity_matrix_dict
+
+    def frame_generator(self, filename, desired_fs=44100, frame_len_sec=5.0, hop_size_sec=2.5, mono=False):
+
+        if os.path.isfile(filename):
+            af = AudioFile(filename=filename)
+
+            duration_sec = numpy.ceil(af.info.duration - 1 / desired_fs)
+
+            n_channels = 1 if mono else af.info.channels
+
+            if frame_len_sec > duration_sec:
+                frame_len_sec = duration_sec
+            frame_len_smp = int(frame_len_sec * desired_fs)
+
+            if hop_size_sec is None:
+                hop_size_sec = frame_len_sec
+
+            start_sec = 0
+            while start_sec < duration_sec - (frame_len_sec - hop_size_sec):
+                stop_sec = (start_sec + frame_len_sec)
+                item_data, _ = AudioFile().load(filename, fs=desired_fs, mono=mono, start=start_sec, stop=stop_sec)
+
+                item_data = item_data.reshape((n_channels, frame_len_smp, 1)).T
+                yield item_data
+
+                start_sec += hop_size_sec
+
+        else:
+            print('{} not found'.format(item_filename))
 
     def get_item_data(self, item_filename):
 
@@ -339,4 +370,143 @@ class RawAudioBatcher():
         import math
         f = math.factorial
         return f(n) // f(r) // f(n - r)
+
+
+class SimpleGenerator(RawAudioBatcher):
+    def __init__(self, annotation, batch_size=1, mono=True, desired_fs=22050,
+                 segment=True, frame_size_sec0=5.0, normalize=False):
+        self.annotation = annotation
+        self.files = annotation.keys()
+        self.sequence = annotation.keys()
+        self.batch_size = batch_size
+        self.mono = mono
+        self.desired_fs = desired_fs
+        self.segment = segment
+        self.frame_size_sec0 = frame_size_sec0
+        self.normalize = normalize
+        self.frame_size_smp0 = int(frame_size_sec0 * desired_fs)
+
+        self.n_frames = None
+        self.frame_size_smp = None
+        self.n_channels = None
+        self.duration_smp = None
+
+        self.n_batches = None
+
+        self.item_shape = self.get_item_shape()
+
+    def get_item_shape(self):
+        for f in self.files:
+            # af_info = AudioFile(filename=f).info
+            af_info = audioread.audio_open(f)
+            self.n_channels = af_info.channels if not self.mono else 1
+            duration_sec = af_info.duration
+            # fs = af_info.samplerate
+            self.duration_smp = int(duration_sec * self.desired_fs)
+            self.duration_smp = int(
+                numpy.ceil(self.duration_smp / self.desired_fs - 1 / self.desired_fs) * self.desired_fs)
+            break  # TODO: check if all files have same duration
+
+        if self.segment:
+
+            # compute number of frames
+            self.n_frames = int(numpy.ceil(self.duration_smp / self.frame_size_smp0))
+
+            # compute final duration of each frame
+            self.frame_size_smp = int(self.duration_smp / self.n_frames)
+
+            return self.n_frames, self.frame_size_smp, self.n_channels
+
+        else:
+            return 1, self.duration_smp, self.n_channels
+
+    def get_item_data(self, item_filename):
+
+        if os.path.isfile(item_filename):
+            # af = audioread.audio_open(item_filename)
+            # item_data_len = int(numpy.ceil(af.duration * self.desired_fs))
+
+            item_data0, fs = librosa.core.load(item_filename, sr=self.desired_fs, mono=self.mono)
+            item_data0 = librosa.util.fix_length(item_data0, self.duration_smp)
+
+            item_data = item_data0.reshape((self.n_channels, self.duration_smp, 1)).T
+            # item_data = item_data[:, :int(numpy.ceil(self.duration_smp / fs - 1 / fs) * fs), :]
+
+            if self.segment:
+                # TODO: segment with hop_size
+                item_data = self.create_segments(item_data)
+
+            if self.normalize:
+                n_segments = item_data.shape[0]
+                n_channels = item_data.shape[-1]
+                for segment in range(n_segments):
+                    norm_val = numpy.max(numpy.max(numpy.abs(item_data[segment]), axis=1 if n_channels == 2 else 0))
+                    item_data[segment] /= norm_val
+
+            # if self.enable_augmentation:
+            #     item_data = self.do_augmentation(item_data)
+
+            fc = FeatureContainer()
+            fc.feat = [item_data]
+        else:
+            raise IOError("File not found [%s]" % (item['file']))
+
+        return fc
+
+    def _get_target_matrix_dict(self, data, annotations):
+        activity_matrix_dict = {}
+        for audio_filename in sorted(list(annotations.keys())):
+            frame_count = data[audio_filename].feat[0].shape[0]
+            if 'scene_label' in annotations[audio_filename]:
+                pos = self.class_labels.index(annotations[audio_filename]['scene_label'])
+                roll = numpy.zeros((frame_count, len(self.class_labels)))
+                roll[:, pos] = 1
+                activity_matrix_dict[audio_filename] = roll
+
+            elif 'label' in annotations[audio_filename]:
+                label = annotations[audio_filename]['label']
+                if type(label) == list:
+                    activity_matrix_dict[audio_filename] = label
+                else:
+                    print('SimpleGenerator._get_targt_matrix_dict - unsupported label type')
+                    sys.exit()
+            else:
+                print('SimpleGenerator._get_targt_matrix_dict - could not find label in annotation')
+                sys.exit()
+
+        return activity_matrix_dict
+
+    def flow(self):
+        # sequence = annotation.keys()
+
+        while True:
+            batch_idx = 0
+
+            for item_filename in self.sequence:
+
+                if batch_idx == 0:
+                    self.reset_output_arrays()
+
+                self.batch_files.append(item_filename)
+                self.batch_annotations[item_filename] = self.annotation[item_filename]
+
+                item_data = self.get_item_data(item_filename)
+
+                self.batch_data[item_filename] = item_data
+
+                if batch_idx == self.batch_size - 1:
+
+                    batch_idx = 0  # reinitialize batch counter
+
+                    # output of generator
+                    x_training, y_training = self.process_output()
+                    yield x_training, y_training
+
+                else:
+                    batch_idx += 1
+
+            if not batch_idx == 0:
+                # output of generator
+                x_training, y_training = self.process_output()
+                yield x_training, y_training
 
