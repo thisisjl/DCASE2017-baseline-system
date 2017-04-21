@@ -551,7 +551,7 @@ sets:
                 padding: valid
                 dilation_rate: 1
                 activation:
-                name: strided convolution
+                name: strided_convolution
             
             - class_name: Conv1D
               config:
