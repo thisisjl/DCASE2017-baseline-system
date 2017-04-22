@@ -6,6 +6,8 @@ import muda
 import jams
 import audioread
 import librosa
+from bisect import bisect
+from random import random, uniform
 from .files import AudioFile
 from .features import FeatureContainer
 
@@ -510,3 +512,156 @@ class SimpleGenerator(RawAudioBatcher):
                 x_training, y_training = self.process_output()
                 yield x_training, y_training
 
+
+class SyntheticDataset():
+    def __init__(self, dataset_size, duration_sec, fs, batch_size=10, class_labels=None,
+                 class_prob=None, clip_r=0.85, trunc_t0=.8, trunc_t1=.9, freq_range0=20, freq_range1=22050):
+
+        self.dataset_size = 17 if dataset_size is None else dataset_size
+        self.duration = duration_sec
+        self.fs = fs
+        self.batch_size = batch_size
+        self.n = int(self.duration * self.fs)
+        self.clip_r = clip_r
+        assert trunc_t0 < trunc_t1, 'trunc_t0 must be lower than trunc_t1'
+        self.trunc_t0 = trunc_t0
+        self.trunc_t1 = trunc_t1
+
+        # self.signal_types = numpy.array(
+        #    ['sine', 'sawtooth', 'square', 'tri', 'whiteNoise', 'sineClip', 'sineTrunc'], dtype=numpy.object_)
+
+        self.signal_types = numpy.array(
+            ['sine', 'sawtooth', 'square', 'tri', 'whiteNoise', 'sineClip'], dtype=numpy.object_)
+
+        # self.signal_types = ['sine', 'sawtooth', 'square', 'tri', 'whiteNoise', 'sineClip', 'sineTrunc']
+
+        # a = numpy.array(['a','b'],dtype=numpy.object_)
+
+        if class_labels is None:
+            self.class_labels = self.signal_types
+        else:
+            for c in class_labels:
+                assert c in self.signal_types, '{} not supported as signal type'.format(c)
+            self.class_labels = numpy.array(class_labels, dtype=numpy.object_)
+
+        if class_prob is None:
+            class_prob = [1 / len(self.class_labels)] * len(self.class_labels)
+        else:
+            assert numpy.sum(class_prob) == 1, 'class_prob should sum to one'
+
+        # create sequence - - - - - - - - - - - - - - -
+
+        # create a cumulative probability distribution for classes
+        cdf = [class_prob[0]]
+        for i in range(1, len(class_prob)):
+            cdf.append(cdf[-1] + class_prob[i])
+
+        self.sequence_idx = [bisect(cdf, random()) for i in range(self.dataset_size)]
+
+        # classes
+        self.sequence_class = self.class_labels[self.sequence_idx]
+
+        # frequencies
+        self.frequencies = [uniform(freq_range0, freq_range1) for _ in range(self.dataset_size)]
+
+        # amplitudes
+        self.amplitudes = [uniform(0, 1) for _ in range(self.dataset_size)]
+
+        # phases
+        self.phases = [uniform(0, 2 * numpy.pi) for _ in range(self.dataset_size)]
+
+    def create_dataset_in_disk(self):
+        pass
+
+    def get_num_batches(self):
+        return int(numpy.ceil(self.dataset_size/self.batch_size))
+
+    def get_item_shape(self):
+        return self.batch_size, int(self.duration * self.fs), 1
+
+    def get_one_hot_encoding(self, label):
+        roll = numpy.zeros((1, len(self.class_labels)))
+        pos = numpy.where(self.class_labels == label)
+        roll[:, pos] = 1
+        return roll
+
+    def process_output(self, batch_data, batch_labels):
+        x_training = numpy.array(batch_data)
+        y_training = numpy.vstack([x for x in batch_labels])
+
+        return x_training, y_training
+
+    def flow(self):
+        # for keras.model.fit_generator()
+
+        while True:
+            batch_idx = 0
+            for idx in range(self.dataset_size):
+
+                if batch_idx == 0:
+                    batch_data = []
+                    batch_labels = []
+
+                curr_label = self.sequence_class[idx]
+                curr_freq = self.frequencies[idx]
+                curr_amp = self.amplitudes[idx]
+                curr_phase = self.phases[idx]
+
+                if curr_label != "whiteNoise":
+                    curr_signal = getattr(self, curr_label)(curr_freq, curr_phase)
+                    curr_signal = curr_signal.reshape(-1, 1)
+                    curr_signal *= curr_amp
+                    batch_data.append(curr_signal)
+                else:
+                    curr_signal = getattr(self, curr_label)()
+                    curr_signal = curr_signal.reshape(-1, 1)
+                    curr_signal *= curr_amp
+                    batch_data.append(curr_signal)
+
+                batch_labels.append(self.get_one_hot_encoding(curr_label))
+
+                if batch_idx == self.batch_size - 1:
+                    yield self.process_output(batch_data, batch_labels)
+                else:
+                    batch_idx += 1
+
+            if not batch_idx == 0:
+                yield self.process_output(batch_data, batch_labels)
+
+    def get_signal_types(self):
+        return self.signal_types
+
+    def sine(self, f, phi):
+        return numpy.sin(numpy.arange(self.n) * numpy.pi * 2 * f / float(self.n) + phi)
+
+    def sawtooth(self, f, phi):
+        return numpy.mod(numpy.arange(self.n) * 2.0 * f / self.n + f / 2.0 + phi, 2) - 1
+
+    def square(self, f, phi):
+        return (self.sawtooth(f, phi) >= 0) * 2.0 - 1
+
+    def tri(self, f, phi):
+        osc = 2 * self.sawtooth(f, phi) * self.square(f, phi) - 1
+        # This needs a phase shift on top:
+        sh = int(self.n / f / 4.0)
+        return numpy.concatenate((osc[sh:], osc[:sh]))
+
+    def whiteNoise(self):
+        return numpy.random.random(self.n) * 2.0 - 1
+
+    def sineClip(self, f, phi):
+        """
+            sineClip: 'r' sets the point at which to clip the sinewave, in [0,1]; e.g.
+            r = 0.8 clips the sinewave at 80% intensity, both top and bottom.
+        """
+        return numpy.clip(self.sine(f, phi), -self.clip_r, self.clip_r)
+
+    def sineTrunc(self, f, phi):
+        """
+            Truncated sinewave; t0 and t1 set start and end time for the
+            sinewave, as ratios relative to N (0 < t0 < t1 < 1). For instance, t0=0.1
+            and t1 = 0.9 means to cut off the sinewave at 10% of the start and end.
+        """
+        r = numpy.arange(self.n) / float(self.n)
+        envelope = (r > self.trunc_t0) * (r <= self.trunc_t1) * 1
+        return self.sine(f, phi) * envelope
