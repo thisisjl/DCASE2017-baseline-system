@@ -597,7 +597,7 @@ sets:
 
             - class_name: Dense
               config:
-                units: 15
+                units: 50
                 kernel_initializer: uniform
                 activation: sigmoid
 
@@ -613,6 +613,12 @@ sets:
 
           optimizer:
             type: Adam
+            parameters:
+              lr: 0.01
+              beta_1: 0.9
+              beta_2: 0.999
+              epsilon: 1e-08
+              decay: 0.0
 
           metrics:
             - categorical_accuracy
