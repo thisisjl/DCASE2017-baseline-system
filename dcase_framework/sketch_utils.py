@@ -239,7 +239,7 @@ class VerySimpleGenerator():
             if os.path.getsize(item_filename) == 0:
                 print('\n\nSize of file {} is {}. Ignoring file.\n'.format(
                     os.path.basename(item_filename), os.path.getsize(item_filename)))
-                return numpy.zeros((self.n_frames, self.frame_size_smp, n_channels))
+                return numpy.zeros((self.n_frames, self.frame_size_smp, self.n_channels))
             else:
                 raise IOError("File not found [%s]" % (item['file']))
 
