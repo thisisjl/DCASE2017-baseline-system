@@ -218,7 +218,7 @@ class VerySimpleGenerator():
 
     def get_item_data(self, item_filename):
 
-        if os.path.isfile(item_filename):
+        if os.path.isfile(item_filename) and os.path.getsize(item_filename) > 0:
             item_data0, fs = librosa.core.load(item_filename, sr=self.desired_fs, mono=self.mono)
             item_data0 = librosa.util.fix_length(item_data0, self.duration_smp)
 
@@ -236,7 +236,11 @@ class VerySimpleGenerator():
                     norm_val = numpy.max(numpy.max(numpy.abs(item_data[segment]), axis=1 if n_channels == 2 else 0))
                     item_data[segment] /= norm_val
         else:
-            raise IOError("File not found [%s]" % (item['file']))
+            if os.path.getsize(item_filename) == 0:
+                print('Size of file {} is {}. Ignoring file'.format(
+                    os.path.basename(item_filename), os.path.getsize(item_filename)))
+            else:
+                raise IOError("File not found [%s]" % (item['file']))
 
         return item_data
 
