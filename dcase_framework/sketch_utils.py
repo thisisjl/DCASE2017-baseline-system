@@ -237,8 +237,9 @@ class VerySimpleGenerator():
                     item_data[segment] /= norm_val
         else:
             if os.path.getsize(item_filename) == 0:
-                print('Size of file {} is {}. Ignoring file'.format(
+                print('\n\nSize of file {} is {}. Ignoring file.\n'.format(
                     os.path.basename(item_filename), os.path.getsize(item_filename)))
+                return numpy.zeros((1, self.duration_smp, 1))
             else:
                 raise IOError("File not found [%s]" % (item['file']))
 
