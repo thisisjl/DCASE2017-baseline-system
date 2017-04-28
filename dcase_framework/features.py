@@ -556,7 +556,8 @@ class FeatureExtractor(object):
             'mfcc',
             'mfcc_delta',
             'mfcc_acceleration',
-            'mel'
+            'mel',
+            'spectrogram_feature'
         ]
         self.valid_extractors += kwargs.get('valid_extractors', [])
 
@@ -924,6 +925,44 @@ class FeatureExtractor(object):
 
         return feature_matrix
 
+    def _spectrogram_feature(self, data, params):
+        """Spectrogram as a feature
+
+        Parameters
+        ----------
+        data : numpy.ndarray
+            Audio data
+        params : dict
+            Parameters
+
+        Returns
+        -------
+        list of numpy.ndarrays
+            List of feature matrices, feature matrix per audio channel
+
+        """
+
+        window = self._window_function(N=params.get('win_length_samples'),
+                                       window_type=params.get('window'))
+
+        feature_matrix = []
+        for channel in range(0, data.shape[0]):
+            # Calculate Static Coefficients
+            spectrogram_ = self._spectrogram(
+                y=data[channel, :],
+                n_fft=params.get('n_fft'),
+                win_length_samples=params.get('win_length_samples'),
+                hop_length_samples=params.get('hop_length_samples'),
+                spectrogram_type=params.get('spectrogram_type') if 'spectrogram_type' in params else 'magnitude',
+                center=True,
+                window=window
+            )
+            spectrogram_ = spectrogram_.reshape(spectrogram_.shape[0], spectrogram_.shape[1], 1)
+
+            feature_matrix.append(spectrogram_.T)
+
+        return feature_matrix
+
     def _load_audio(self, audio_file, params):
         """Load audio using AudioFile class
 
@@ -1117,16 +1156,19 @@ class FeatureStacker(object):
     """Feature stacker"""
     __version__ = '0.0.1'
 
-    def __init__(self, recipe, **kwargs):
+    def __init__(self, recipe, feature_hop=1, **kwargs):
         """Constructor
-
         Parameters
         ----------
         recipe : dict
             Stacking recipe
+        feature_hop : int, optional
+            Feature hopping
+            Default value 1
         """
 
         self.recipe = recipe
+        self.feature_hop = feature_hop
         self.logger = kwargs.get('logger', logging.getLogger(__name__))
 
     def __getstate__(self):
@@ -1137,17 +1179,14 @@ class FeatureStacker(object):
 
     def normalizer(self, normalizer_list):
         """Stack normalization factors based on stack map
-
         Parameters
         ----------
         normalizer_list : dict
             List of Normalizer classes
-
         Returns
         -------
         dict
             Stacked normalizer variables in a dict
-
         """
 
         # Check that all feature matrices have same amount of frames
@@ -1207,21 +1246,15 @@ class FeatureStacker(object):
 
         return normalizer
 
-    def feature_vector(self, feature_repository, feature_hop=1):
+    def feature_vector(self, feature_repository):
         """Feature vector creation
-
         Parameters
         ----------
         feature_repository : FeatureRepository, dict
             Feature repository with needed features
-        feature_hop : int, optional
-            Feature hopping
-            Default value 1
-
         Returns
         -------
         FeatureContainer
-
         """
 
         # Check that all feature matrices have same amount of frames
@@ -1258,14 +1291,14 @@ class FeatureStacker(object):
 
             if 'vector-index' not in feature or ('vector-index' in feature and 'full' in feature['vector-index'] and feature['vector-index']['full']):
                 # We have Full matrix
-                feature_matrix.append(feature_repository[method].feat[channel][::feature_hop, :])
+                feature_matrix.append(feature_repository[method].feat[channel][::self.feature_hop, :])
             elif 'vector-index' in feature and 'vector' in feature['vector-index'] and 'selection' in feature['vector-index'] and feature['vector-index']['selection']:
                 index = numpy.array(feature['vector-index']['vector'])
                 # We have selector vector
-                feature_matrix.append(feature_repository[method].feat[channel][::feature_hop, index])
+                feature_matrix.append(feature_repository[method].feat[channel][::self.feature_hop, index])
             elif 'vector-index' in feature and 'start' in feature['vector-index'] and 'end' in feature['vector-index']:
                 # we have start and end index
-                feature_matrix.append(feature_repository[method].feat[channel][::feature_hop, feature['vector-index']['start']:feature['vector-index']['end']])
+                feature_matrix.append(feature_repository[method].feat[channel][::self.feature_hop, feature['vector-index']['start']:feature['vector-index']['end']])
 
         meta = {
             'parameters': {
@@ -1282,57 +1315,44 @@ class FeatureStacker(object):
 
         return FeatureContainer(features=[numpy.hstack(feature_matrix)], meta=meta)
 
-    def process(self, feature_repository, feature_hop=1):
+    def process(self, feature_repository):
         """Feature vector creation
-
         Parameters
         ----------
         feature_repository : FeatureRepository
             Feature repository with needed features
-        feature_hop : int, optional
-            Feature hopping
-            Default value 1
         Returns
         -------
         FeatureContainer
-
         """
 
-        return self.feature_vector(feature_repository=feature_repository, feature_hop=1)
+        return self.feature_vector(feature_repository=feature_repository)
 
 
 class FeatureNormalizer(DataFile, ContainerMixin):
     """Feature normalizer
-
     Accumulates feature statistics
-
     Examples
     --------
-
     >>> normalizer = FeatureNormalizer()
     >>> for feature_matrix in training_items:
     >>>     normalizer.accumulate(feature_matrix)
     >>>
     >>> normalizer.finalize()
-
     >>> for feature_matrix in test_items:
     >>>     feature_matrix_normalized = normalizer.normalizer(feature_matrix)
     >>>     # used the features
-
     """
     __version__ = '0.0.1'
 
     def __init__(self, stat=None, feature_matrix=None):
         """__init__ method.
-
         Parameters
         ----------
         stat : dict or None
             Pre-calculated statistics in dict to initialize internal state
-
         feature_matrix : numpy.ndarray [shape=(frames, number of feature values)] or None
             Feature matrix to be used in the initialization
-
         """
 
         if stat:
@@ -1387,15 +1407,12 @@ class FeatureNormalizer(DataFile, ContainerMixin):
 
     def accumulate(self, feature_container):
         """Accumalate statistics
-
         Parameters
         ----------
         feature_container : FeatureContainer
-
         Returns
         -------
         nothing
-
         """
 
         stat = feature_container.stat
@@ -1420,16 +1437,12 @@ class FeatureNormalizer(DataFile, ContainerMixin):
 
     def finalize(self):
         """Finalize statistics calculation
-
         Accumulated values are used to get mean and std for the seen feature data.
-
         Parameters
         ----------
-
         Returns
         -------
         None
-
         """
 
         for channel in range(0, len(self['N'])):
@@ -1449,7 +1462,6 @@ class FeatureNormalizer(DataFile, ContainerMixin):
 
     def normalize(self, feature_container, channel=0):
         """Normalize feature matrix with internal statistics of the class
-
         Parameters
         ----------
         feature_container : numpy.ndarray [shape=(frames, number of feature values)]
@@ -1457,12 +1469,10 @@ class FeatureNormalizer(DataFile, ContainerMixin):
         channel : int
             Feature channel
             Default value "0"
-
         Returns
         -------
         feature_matrix : numpy.ndarray [shape=(frames, number of feature values)]
             Normalized feature matrix
-
         """
 
         if isinstance(feature_container, FeatureContainer):
@@ -1474,17 +1484,14 @@ class FeatureNormalizer(DataFile, ContainerMixin):
 
     def process(self, feature_container):
         """Normalize feature matrix with internal statistics of the class
-
         Parameters
         ----------
         feature_container : numpy.ndarray [shape=(frames, number of feature values)]
             Feature matrix to be normalized
-
         Returns
         -------
         feature_matrix : numpy.ndarray [shape=(frames, number of feature values)]
             Normalized feature matrix
-
         """
 
         return self.normalize(feature_container=feature_container)
@@ -1498,7 +1505,6 @@ class FeatureAggregator(object):
 
     def __init__(self, *args, **kwargs):
         """Constructor
-
         Parameters
         ----------
         recipe : list of dicts or list of strs
@@ -1507,7 +1513,6 @@ class FeatureAggregator(object):
             Window length in feature frames
         hop_length_frames : int
             Hop length in feature frames
-
         """
 
         if isinstance(kwargs.get('recipe'), dict):
@@ -1524,7 +1529,6 @@ class FeatureAggregator(object):
 
     def process(self, feature_container):
         """Process features
-
         Parameters
         ----------
         feature_container : FeatureContainer
@@ -1532,7 +1536,6 @@ class FeatureAggregator(object):
         Returns
         -------
         FeatureContainer
-
         """
 
         # Not the most efficient way as numpy stride_tricks would produce
@@ -1599,18 +1602,15 @@ class FeatureMasker(object):
 
     def __init__(self, *args, **kwargs):
         """Constructor
-
         Parameters
         ----------
         hop_length_seconds : float
             Hop length in seconds
-
         """
         self.hop_length_seconds = kwargs.get('hop_length_seconds')
 
     def process(self, feature_repository, mask_events, hop_length_seconds=None):
         """Process feature repository
-
         Parameters
         ----------
         feature_repository : FeatureRepository
@@ -1618,11 +1618,9 @@ class FeatureMasker(object):
             Event list used for masking
         hop_length_seconds : float
             Hop length in seconds, if none given one given for constructor used
-
         Returns
         -------
         FeatureRepository
-
         """
 
         if not hop_length_seconds:
@@ -1641,4 +1639,3 @@ class FeatureMasker(object):
                     feature_repository[method].feat[channel] = feature_repository[method].feat[channel][removal_mask, :]
 
         return feature_repository
-
