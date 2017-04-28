@@ -352,7 +352,6 @@ class LearnerContainer(DataFile, ContainerMixin):
                 )
                 self.logger.exception(message)
                 raise ValueError(message)
-
         return input_shape
 
 
@@ -1164,7 +1163,6 @@ class SceneClassifierMLP(SceneClassifier, KerasMixin):
             self.logger.exception(message)
             raise ValueError(message)
 
-
         # Convert annotations into activity matrix format
         activity_matrix_dict = self._get_target_matrix_dict(data=data, annotations=annotations)
 
@@ -1350,6 +1348,29 @@ class SceneClassifierConvolutional(SceneClassifier, KerasMixin):
         super(SceneClassifierConvolutional, self).__init__(*args, **kwargs)
         self.method = 'convolutional'
 
+    def _get_target_matrix_dict(self, data, annotations):
+        activity_matrix_dict = {}
+        for audio_filename in sorted(list(annotations.keys())):
+            frame_count = 1  #data[audio_filename].feat[0].shape[0]
+            pos = self.class_labels.index(annotations[audio_filename]['scene_label'])
+            roll = numpy.zeros((frame_count, len(self.class_labels)))
+            roll[:, pos] = 1
+            activity_matrix_dict[audio_filename] = roll
+        return activity_matrix_dict
+
+    def _get_input_size(self, data):
+        input_shape = None
+        for audio_filename in data:
+            if not input_shape:
+                input_shape = data[audio_filename].feat[0].shape
+            elif input_shape != data[audio_filename].feat[0].shape:
+                message = '{name}: Input size not coherent.'.format(
+                    name=self.__class__.__name__
+                )
+                self.logger.exception(message)
+                raise ValueError(message)
+        return input_shape
+
     def create_model(self, input_shape):
         from keras.models import Sequential
         self.model = Sequential()
@@ -1376,16 +1397,21 @@ class SceneClassifierConvolutional(SceneClassifier, KerasMixin):
             if 'config' not in layer_setup:
                 layer_setup['config'] = {}
 
-            # Set layer input
+            # Layer setup
             if layer_id == 0 and layer_setup.get_path('config.input_shape') is None:
                 # Set input layer dimension for the first layer if not set
-                if layer_setup.get('class_name') == 'Dropout':
+                if type(input_shape) == int:
                     layer_setup['config']['input_shape'] = (input_shape,)
-                else:
+                elif type(input_shape) == tuple:
                     layer_setup['config']['input_shape'] = input_shape
 
             elif layer_setup.get_path('config.input_dim') == 'FEATURE_VECTOR_LENGTH':
-                layer_setup['config']['input_dim'] = input_shape
+                # Magic field "FEATURE_VECTOR_LENGTH"
+                layer_setup['config']['input_shape'] = (input_shape,)
+
+            elif layer_setup.get_path('config.input_shape') == 'FEATURE_VECTOR_LENGTH':
+                # Magic field "FEATURE_VECTOR_LENGTH"
+                layer_setup['config']['input_shape'] = (input_shape,)
 
             # Set layer output
             if layer_setup.get_path('config.units') == 'CLASS_COUNT':
@@ -1394,7 +1420,6 @@ class SceneClassifierConvolutional(SceneClassifier, KerasMixin):
             # Set kernel initializer
             if 'kernel_initializer' in layer_setup.get('config') and set_kernel:
                 layer_setup.get('config')['kernel_initializer'] = kernel
-
 
             if layer_setup.get('config'):
                 self.model.add(LayerClass(**dict(layer_setup.get('config'))))
@@ -1465,6 +1490,181 @@ class SceneClassifierConvolutional(SceneClassifier, KerasMixin):
             # Import keras and suppress backend announcement printed to stderr
             import keras
 
+        if self.feature_stacker.recipe[0]['method'] == 'raw_audio':
+            self.learn_with_generator(training_files, validation_files, annotations)
+        else:
+            # Convert annotations into activity matrix format
+            activity_matrix_dict = self._get_target_matrix_dict(data=data, annotations=annotations)
+
+            # Process data
+            # X_training = self.process_data(data=data, files=training_files)
+            # Y_training = self.process_activity(activity_matrix_dict=activity_matrix_dict, files=training_files)
+            X_training = numpy.array([data[k].feat[0] for k in data.keys()])
+            Y_training = numpy.vstack([activity_matrix_dict[x] for x in data.keys()])
+
+            if self.show_extra_debug:
+                self.logger.debug('  Training items \t[{examples:d}]'.format(examples=len(X_training)))
+
+            # Process validation data
+            if validation_files:
+                # X_validation = self.process_data(data=data, files=validation_files)
+                # Y_validation = self.process_activity(activity_matrix_dict=activity_matrix_dict, files=validation_files)
+                X_validation = numpy.array([data[k].feat[0] for k in validation_files])
+                Y_validation = numpy.vstack([activity_matrix_dict[x] for x in validation_files])
+
+                validation = (X_validation, Y_validation)
+                if self.show_extra_debug:
+                    self.logger.debug('  Validation items \t[{validation:d}]'.format(validation=len(X_validation)))
+            else:
+                validation = None
+
+            # Create model
+            self.create_model(input_shape=self._get_input_size(data=data))
+
+            if self.show_extra_debug:
+                self.log_model_summary()
+
+            class FancyProgbarLogger(keras.callbacks.Callback):
+                """Callback that prints metrics to stdout.
+                """
+
+                def __init__(self, callbacks=None, queue_length=10, metric=None, disable_progress_bar=False,
+                             log_progress=False):
+                    self.metric = metric
+                    self.disable_progress_bar = disable_progress_bar
+                    self.log_progress = log_progress
+                    self.timer = Timer()
+
+                def on_train_begin(self, logs=None):
+                    self.logger = logging.getLogger(__name__)
+                    self.verbose = self.params['verbose']
+                    self.epochs = self.params['epochs']
+                    if self.log_progress:
+                        self.logger.info('Starting training process')
+                    self.pbar = tqdm(total=self.epochs,
+                                     file=sys.stdout,
+                                     desc='           {0:>15s}'.format('Learn (epoch)'),
+                                     leave=False,
+                                     miniters=1,
+                                     disable=self.disable_progress_bar
+                                     )
+
+                def on_train_end(self, logs=None):
+                    self.pbar.close()
+
+                def on_epoch_begin(self, epoch, logs=None):
+                    if self.log_progress:
+                        self.logger.info('  Epoch %d/%d' % (epoch + 1, self.epochs))
+                    self.seen = 0
+                    self.timer.start()
+
+                def on_batch_begin(self, batch, logs=None):
+                    if self.seen < self.params['samples']:
+                        self.log_values = []
+
+                def on_batch_end(self, batch, logs=None):
+                    logs = logs or {}
+                    batch_size = logs.get('size', 0)
+                    self.seen += batch_size
+
+                    for k in self.params['metrics']:
+                        if k in logs:
+                            self.log_values.append((k, logs[k]))
+
+                def on_epoch_end(self, epoch, logs=None):
+                    logs = logs or {}
+                    postfix = {
+                        'train': None,
+                        'validation': None,
+                    }
+                    for k in self.params['metrics']:
+                        if k in logs:
+                            self.log_values.append((k, logs[k]))
+                            if self.metric and k.endswith(self.metric):
+                                if k.startswith('val_'):
+                                    postfix['validation'] = '{:4.2f}'.format(logs[k] * 100.0)
+                                else:
+                                    postfix['train'] = '{:4.2f}'.format(logs[k] * 100.0)
+                    self.timer.stop()
+                    if self.log_progress:
+                        self.logger.info('                train={train}, validation={validation}, time={time}'.format(
+                            train=postfix['train'],
+                            validation=postfix['validation'],
+                            time=self.timer.get_string())
+                        )
+
+                    self.pbar.set_postfix(postfix)
+                    self.pbar.update(1)
+
+            # Add model callbacks
+            fancy_logger = FancyProgbarLogger(metric=self.learner_params.get_path('model.metrics')[0],
+                                              disable_progress_bar=self.disable_progress_bar,
+                                              log_progress=self.log_progress)
+
+            # Callback list, always have FancyProgbarLogger
+            callbacks = [fancy_logger]
+
+            callback_params = self.learner_params.get_path('training.callbacks', [])
+            if callback_params:
+                for cp in callback_params:
+                    if cp['type'] == 'ModelCheckpoint' and not cp['parameters'].get('filepath'):
+                        cp['parameters']['filepath'] = os.path.splitext(self.filename)[
+                                                           0] + '.weights.{epoch:02d}-{val_loss:.2f}.hdf5'
+
+                    if cp['type'] == 'EarlyStopping' and cp.get('parameters').get('monitor').startswith(
+                            'val_') and not self.learner_params.get_path('validation.enable', False):
+                        message = '{name}: Cannot use callback type [{type}] with monitor parameter [{monitor}] as there is no validation set.'.format(
+                            name=self.__class__.__name__,
+                            type=cp['type'],
+                            monitor=cp.get('parameters').get('monitor')
+                        )
+
+                        self.logger.exception(message)
+                        raise AttributeError(message)
+
+                    try:
+                        # Get Callback class
+                        CallbackClass = getattr(importlib.import_module("keras.callbacks"), cp['type'])
+
+                        # Add callback to list
+                        callbacks.append(CallbackClass(**cp.get('parameters', {})))
+
+                    except AttributeError:
+                        message = '{name}: Invalid Keras callback type [{type}]'.format(
+                            name=self.__class__.__name__,
+                            type=cp['type']
+                        )
+
+                        self.logger.exception(message)
+                        raise AttributeError(message)
+
+            if self.show_extra_debug:
+                self.logger.debug('  Feature vector \t[{vector:}]'.format(
+                    vector=self._get_input_size(data=data))
+                )
+                self.logger.debug('  Batch size \t[{batch:d}]'.format(
+                    batch=self.learner_params.get_path('training.batch_size', 1))
+                )
+
+                self.logger.debug('  Epochs \t\t[{epoch:d}]'.format(
+                    epoch=self.learner_params.get_path('training.epochs', 1))
+                )
+
+            # Set seed
+            self.set_seed()
+
+            hist = self.model.fit(x=X_training,
+                                  y=Y_training,
+                                  batch_size=self.learner_params.get_path('training.batch_size', 1),
+                                  epochs=self.learner_params.get_path('training.epochs', 1),
+                                  validation_data=validation,
+                                  verbose=1,
+                                  shuffle=self.learner_params.get_path('training.shuffle', True),
+                                  callbacks=callbacks
+                                  )
+            self['learning_history'] = hist.history
+
+    def learn_with_generator(self, training_files, validation_files, annotations):
         # crate training and validation batch generators
         batch_size = self.learner_params.get_path('training.batch_size', 1)
         mono = self.learner_params.get_path('audio.mono', True)
@@ -1485,98 +1685,19 @@ class SceneClassifierConvolutional(SceneClassifier, KerasMixin):
         self.create_model(input_shape=input_shape)
 
         if self.show_extra_debug:
-            # self.log_model_summary()
             print(self.model.summary())
 
-        # class FancyProgbarLogger(keras.callbacks.Callback):
-        #     """Callback that prints metrics to stdout.
-        #     """
-        #
-        #     def __init__(self, callbacks=None, queue_length=10, metric=None, disable_progress_bar=False, log_progress=False):
-        #         self.metric = metric
-        #         self.disable_progress_bar = disable_progress_bar
-        #         self.log_progress = log_progress
-        #         self.timer = Timer()
-        #
-        #     def on_train_begin(self, logs=None):
-        #         self.logger = logging.getLogger(__name__)
-        #         self.verbose = self.params['verbose']
-        #         self.epochs = self.params['epochs']
-        #         if self.log_progress:
-        #             self.logger.info('Starting training process')
-        #         self.pbar = tqdm(total=self.epochs,
-        #                          file=sys.stdout,
-        #                          desc='           {0:>15s}'.format('Learn (epoch)'),
-        #                          leave=False,
-        #                          miniters=1,
-        #                          disable=self.disable_progress_bar
-        #                          )
-        #
-        #     def on_train_end(self, logs=None):
-        #         self.pbar.close()
-        #
-        #     def on_epoch_begin(self, epoch, logs=None):
-        #         if self.log_progress:
-        #             self.logger.info('  Epoch %d/%d' % (epoch + 1, self.epochs))
-        #         self.seen = 0
-        #         self.timer.start()
-        #
-        #     def on_batch_begin(self, batch, logs=None):
-        #         # if self.seen < self.params['samples']:
-        #         #     self.log_values = []
-        #         pass
-        #
-        #     def on_batch_end(self, batch, logs=None):
-        #         # logs = logs or {}
-        #         # batch_size = logs.get('size', 0)
-        #         # self.seen += batch_size
-        #         #
-        #         # for k in self.params['metrics']:
-        #         #     if k in logs:
-        #         #         self.log_values.append((k, logs[k]))
-        #         pass
-        #
-        #     def on_epoch_end(self, epoch, logs=None):
-        #         logs = logs or {}
-        #         postfix = {
-        #             'train': None,
-        #             'validation': None,
-        #         }
-        #         for k in self.params['metrics']:
-        #             if k in logs:
-        #                 self.log_values.append((k, logs[k]))
-        #                 if self.metric and k.endswith(self.metric):
-        #                     if k.startswith('val_'):
-        #                         postfix['validation'] = '{:4.2f}'.format(logs[k] * 100.0)
-        #                     else:
-        #                         postfix['train'] = '{:4.2f}'.format(logs[k] * 100.0)
-        #         self.timer.stop()
-        #         if self.log_progress:
-        #             self.logger.info('                train={train}, validation={validation}, time={time}'.format(
-        #                 train=postfix['train'],
-        #                 validation=postfix['validation'],
-        #                 time=self.timer.get_string())
-        #             )
-        #
-        #         self.pbar.set_postfix(postfix)
-        #         self.pbar.update(1)
-        #
-        # # Add model callbacks
-        # fancy_logger = FancyProgbarLogger(metric=self.learner_params.get_path('model.metrics')[0],
-        #                                   disable_progress_bar=self.disable_progress_bar,
-        #                                   log_progress=self.log_progress)
-        #
-        # # Callback list, always have FancyProgbarLogger
-        # callbacks = [fancy_logger]
         callbacks = []
 
         callback_params = self.learner_params.get_path('training.callbacks', [])
         if callback_params:
             for cp in callback_params:
                 if cp['type'] == 'ModelCheckpoint' and not cp['parameters'].get('filepath'):
-                    cp['parameters']['filepath'] = os.path.splitext(self.filename)[0] + '.weights.{epoch:02d}-{val_loss:.2f}.hdf5'
+                    cp['parameters']['filepath'] = os.path.splitext(self.filename)[
+                                                       0] + '.weights.{epoch:02d}-{val_loss:.2f}.hdf5'
 
-                if cp['type'] == 'EarlyStopping' and cp.get('parameters').get('monitor').startswith('val_') and not self.learner_params.get_path('validation.enable', False):
+                if cp['type'] == 'EarlyStopping' and cp.get('parameters').get('monitor').startswith(
+                        'val_') and not self.learner_params.get_path('validation.enable', False):
                     message = '{name}: Cannot use callback type [{type}] with monitor parameter [{monitor}] as there is no validation set.'.format(
                         name=self.__class__.__name__,
                         type=cp['type'],
@@ -1603,16 +1724,7 @@ class SceneClassifierConvolutional(SceneClassifier, KerasMixin):
                     raise AttributeError(message)
 
         self.set_seed()
-        # if self.show_extra_debug:
-        #     self.logger.debug('  Training items \t[{examples:d}]'.format(examples=len(X_training)))
-        # if validation_files:
-        #     X_validation = numpy.vstack([data[x].feat[0] for x in validation_files])
-        #     Y_validation = numpy.vstack([activity_matrix_dict[x] for x in validation_files])
-        #     validation = (X_validation, Y_validation)
-        #     if self.show_extra_debug:
-        #         self.logger.debug('  Validation items \t[{validation:d}]'.format(validation=len(X_validation)))
-        # else:
-        #     validation = None
+
         if self.show_extra_debug:
             self.logger.debug('  Batch size \t[{batch:d}]'.format(
                 batch=self.learner_params.get_path('training.batch_size', 1))
