@@ -100,6 +100,10 @@ def create_model(learner_params, input_shape):
         elif layer_setup.get_path('config.input_dim') == 'FEATURE_VECTOR_LENGTH':
             layer_setup['config']['input_dim'] = input_shape
 
+        if layer_setup['class_name'] == 'Reshape':
+            if not layer_setup['config'].get('target_shape', None):
+                layer_setup['config']['target_shape'] = model.output_shape[2:]
+
         # Set layer output
         if layer_setup.get_path('config.units') == 'CLASS_COUNT':
             layer_setup['config']['units'] = len(class_labels)
