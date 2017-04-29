@@ -915,6 +915,213 @@ sets:
         enable: true
         type: majority_vote         # [maximum, majority_vote]
 
+  - set_id: choi2016a
+    description: TODO
+    dataset:
+      method: development
+    dataset_method_parameters:
+      development:
+        name: TUTAcousticScenes_2017_DevelopmentSet  # MagnatagatuneDataset # 
+        fold_list: [1, 2, 3, 4]
+        evaluation_mode: folds
+    feature_stacker:
+      stacking_recipe: mel_spectrogram
+    feature_aggregator:
+      enable: false
+      aggregation_recipe: flatten
+      win_length_seconds: 0.1
+      hop_length_seconds: 0.02
+    learner:
+      method: convolutional
+      show_model_information: false
+    learner_method_parameters:
+      convolutional:
+        seed: 1
+        keras:
+          backend: theano
+          backend_parameters:
+            floatX: float64
+            device: cpu
+            fastmath: false
+            optimizer: None
+            openmp: false
+            threads: 1
+            CNR: true
+        #audio:
+        #  mono: True
+        #  desired_fs: 16000
+        #  segment: True
+        #  frame_size_sec: 4.0
+        #  normalize: True
+
+        validation:
+          enable: true
+          setup_source: generated_scene_balanced
+          validation_amount: 0.10
+
+        training:
+          epochs: 200
+          batch_size: 10
+          shuffle: true
+          callbacks:
+            - type: EarlyStopping
+              parameters:
+                monitor: val_categorical_accuracy
+                min_delta: 0.001
+                patience: 10
+                verbose: 0
+                mode: max
+            - type: ModelCheckpoint
+              parameters:
+                monitor: val_categorical_accuracy         # quantity to be monitored.
+                save_best_only: False                      # the latest best model according to the quantity monitored will not be overwritten.
+                period: 1                                 # number of epochs with no improvement after which training will be stopped.
+                verbose: 0                                # verbosity mode.
+                mode: max                                 # {auto, min, max}. In min mode, training will stop when the quantity monitored has stopped decreasing; in max mode it will stop when the quantity monitored has stopped increasing; in auto mode, the direction is automatically inferred from the name of the monitored quantity.
+                save_weights_only: False                  # if True, then only the model's weights will be saved (model.save_weights(filepath)), else the full model is saved  
+        model:
+          config:
+            # input block - - - - - - - - - - - - 
+            #- class_name: Input
+            #  config:
+            #    shape: !!python/tuple [96, 1366, 1]
+            - class_name: ZeroPadding2D
+              config:
+                padding: !!python/tuple [0,37]
+
+            - class_name: BatchNormalization
+              config:
+                axis: 2
+
+            # convolutional block 1 - - - - - - - - - - - - 
+            - class_name: Conv2D
+              config:
+                filters: 64
+                kernel_size: 3
+                strides: 1
+                padding: same
+
+            - class_name: BatchNormalization
+              config:
+                axis: 3
+
+            - class_name: ELU
+
+            - class_name: MaxPooling2D
+              config:
+                pool_size: !!python/tuple [2,2]
+                strides: !!python/tuple [2,2]
+
+            # convolutional block 2 - - - - - - - - - - - - 
+            - class_name: Conv2D
+              config:
+                filters: 128
+                kernel_size: 3
+                strides: 1
+                padding: same
+
+            - class_name: BatchNormalization
+              config:
+                axis: 3
+
+            - class_name: ELU
+            
+            - class_name: MaxPooling2D
+              config:
+                pool_size: !!python/tuple [3,3]
+                strides: !!python/tuple [3,3]
+
+            # convolutional block 3 - - - - - - - - - - - - 
+            - class_name: Conv2D
+              config:
+                filters: 128
+                kernel_size: 3
+                strides: 1
+                padding: same
+
+            - class_name: BatchNormalization
+              config:
+                axis: 3
+
+            - class_name: ELU
+            
+            - class_name: MaxPooling2D
+              config:
+                pool_size: !!python/tuple [4,4]
+                strides: !!python/tuple [4,4]
+
+            # convolutional block 4 - - - - - - - - - - - - 
+            - class_name: Conv2D
+              config:
+                filters: 128
+                kernel_size: 3
+                strides: 1
+                padding: same
+
+            - class_name: BatchNormalization
+              config:
+                axis: 3
+
+            - class_name: ELU
+            
+            - class_name: MaxPooling2D
+              config:
+                pool_size: !!python/tuple [4,4]
+                strides: !!python/tuple [4,4]
+
+            # Reshape - - - - - - - - - - - - 
+            - class_name: Reshape
+              #config:
+                #target_shape: !!python/tuple [15,128]
+            
+            # GRU block 1, 2, output - - - - - 
+            - class_name: GRU
+              config:
+                units: 32
+                return_sequences: True
+
+            - class_name: GRU
+              config:
+                units: 32
+                return_sequences: True
+
+            # block 5 - - - - - - - - - - - - 
+            - class_name: Dense
+              config:
+                units: 50
+                activation: sigmoid
+                
+          conv_kernel: 
+            class: RandomNormal
+            config:
+              mean: 0.01
+              stddev: 0.01
+              seed:
+          
+          loss: categorical_crossentropy
+
+          optimizer:
+            type: Adam
+            parameters:
+              lr: 0.01
+              beta_1: 0.9
+              beta_2: 0.999
+              epsilon: 0.00000001
+              decay: 0.0
+
+          metrics:
+            - categorical_accuracy
+
+    recognizer:
+      frame_accumulation:
+        enable: false
+      frame_binarization:
+        enable: true
+        type: frame_max             # [frame_max, global_threshold]
+      decision_making:
+        enable: true
+        type: majority_vote         # [maximum, majority_vote]
+
   - set_id: dcase2017_gpu
     description: DCASE2017 baseline (GPU) using DCASE2017 task 1 development dataset
     dataset:
@@ -1241,6 +1448,12 @@ defaults:
       fmin: 0                               # Minimum frequency when constructing mel bands
       fmax: 22050                           # Maximum frequency when constructing mel band
       htk: false                            # Switch for HTK-styled mel-frequency equation
+
+    mel_spectrogram:
+      n_fft: 512
+      n_mels: 96
+      dim_ordering: tf
+
 
   # ==========================================================
   # Feature stacker
