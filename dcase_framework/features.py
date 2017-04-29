@@ -557,7 +557,8 @@ class FeatureExtractor(object):
             'mfcc_delta',
             'mfcc_acceleration',
             'mel',
-            'spectrogram_feature'
+            'spectrogram_feature',
+            'mel_spectrogram'
         ]
         self.valid_extractors += kwargs.get('valid_extractors', [])
 
@@ -960,6 +961,47 @@ class FeatureExtractor(object):
             spectrogram_ = spectrogram_.reshape(spectrogram_.shape[0], spectrogram_.shape[1], 1)
 
             feature_matrix.append(spectrogram_.T)
+
+        return feature_matrix
+
+    def _mel_spectrogram(self, data, params):
+        """Mel-band spectrogram
+
+        Parameters
+        ----------
+        data : numpy.ndarray
+            Audio data
+        params : dict
+            Parameters
+
+        Returns
+        -------
+        list of numpy.ndarrays
+            List of feature matrices, feature matrix per audio channel
+        """
+
+        dim_ordering = params.get('dim_ordering', 'tf')
+
+        feature_matrix = []
+        for channel in range(0, data.shape[0]):
+            _melspectrogram = librosa.feature.melspectrogram(
+                y=data[channel, :],
+                sr=params.get('fs'),
+                hop_length=params.get('hop_length_samples'),
+                n_fft=params.get('n_fft'),
+                n_mels=params.get('n_mels')
+            )
+
+            _log_melspectrogram = librosa.logamplitude(
+                _melspectrogram ** 2,
+                ref_power=1.0)
+
+            if dim_ordering == 'th':
+                _log_melspectrogram = numpy.expand_dims(_log_melspectrogram, axis=0)
+            elif dim_ordering == 'tf':
+                _log_melspectrogram = numpy.expand_dims(_log_melspectrogram, axis=3)
+
+            feature_matrix.append(_log_melspectrogram)
 
         return feature_matrix
 
