@@ -1,0 +1,63 @@
+_hash: b7ce6eafff842fb95b4241df438d784b
+audio_error_handling: false
+hop_length_seconds: 0.02
+method: mlp
+parameters:
+  _hash: c020b64fc1b80285e6762478a879e130
+  keras:
+    backend: theano
+    backend_parameters:
+      CNR: true
+      device: cpu
+      fastmath: false
+      floatX: float64
+      openmp: false
+      optimizer: None
+      threads: 1
+  model:
+    config:
+    - class_name: Dense
+      config:
+        activation: relu
+        kernel_initializer: uniform
+        units: 50
+    - class_name: Dropout
+      config:
+        rate: 0.2
+    - class_name: Dense
+      config:
+        activation: relu
+        kernel_initializer: uniform
+        units: 50
+    - class_name: Dropout
+      config:
+        rate: 0.2
+    - class_name: Dense
+      config:
+        activation: softmax
+        kernel_initializer: uniform
+        units: CLASS_COUNT
+    loss: categorical_crossentropy
+    metrics:
+    - categorical_accuracy
+    optimizer:
+      type: Adam
+  seed: 1
+  training:
+    batch_size: 256
+    callbacks:
+    - parameters:
+        min_delta: 0.001
+        mode: max
+        monitor: val_categorical_accuracy
+        patience: 10
+        verbose: 0
+      type: EarlyStopping
+    epochs: 200
+    shuffle: true
+  validation:
+    enable: true
+    setup_source: generated_scene_balanced
+    validation_amount: 0.1
+show_model_information: false
+win_length_seconds: 0.04

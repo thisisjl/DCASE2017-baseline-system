@@ -1,0 +1,13 @@
+_hash: 6b893bc92d3feb98caad04bd1cc22e09
+audio_error_handling: false
+decision_making:
+  enable: true
+  type: majority_vote
+enable: true
+frame_accumulation:
+  enable: false
+  type: sum
+frame_binarization:
+  enable: true
+  threshold: null
+  type: frame_max

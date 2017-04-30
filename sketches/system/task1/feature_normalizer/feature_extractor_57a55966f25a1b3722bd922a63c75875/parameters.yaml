@@ -1,0 +1,17 @@
+_hash: 57a55966f25a1b3722bd922a63c75875
+fmax: 22050
+fmin: 0
+fs: 44100
+hop_length_samples: 882
+hop_length_seconds: 0.02
+htk: false
+log: true
+method: mel
+mono: true
+n_fft: 2048
+n_mels: 40
+normalize_mel_bands: false
+spectrogram_type: magnitude
+win_length_samples: 1764
+win_length_seconds: 0.04
+window: hamming_asymmetric
