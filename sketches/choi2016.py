@@ -11,12 +11,10 @@ Code by github.com/keunwoochoi.
 '''
 from __future__ import print_function
 from __future__ import absolute_import
-
 import os
+import sys
+sys.path.append(os.path.split(os.path.dirname(os.path.realpath(__file__)))[0])
 import pandas as pd
-import numpy
-import audioread
-import librosa
 import numpy as np
 from keras import backend as K
 from keras.layers import Input, Dense
@@ -32,189 +30,7 @@ from keras.utils.layer_utils import convert_all_kernels_in_model
 from keras.optimizers import Adam
 # from audio_conv_utils import decode_predictions, preprocess_input
 from dcase_framework.sketch_utils import get_callbacks, get_learner_params
-
-
-class VerySimpleGenerator():
-    def __init__(self, files_df, batch_size=1, mono=True, desired_fs=22050, segment=True,
-                 frame_size_sec0=5.0, normalize=False, shuffle=True, label_str='scene_label'):
-
-        self.files_df = files_df # pd.DataFrame: for training: columns=['path', 'label',..], for test ['path']
-        self.n_files = len(self.files_df)
-
-        if shuffle:
-            self.files_df = self.files_df.sample(frac=1).reset_index(drop=True)
-
-        self.label_str = label_str
-        if self.label_str in self.files_df.columns:
-            # check if str label or already code
-            item_label = self.files_df.iloc[numpy.random.randint(0,self.n_files)][self.label_str]
-            if all(isinstance(item, int) and item in [0, 1] for item in item_label):
-                self.label_already_formatted = True
-            else:
-                self.label_already_formatted = False
-                self.class_labels = self.files_df[self.label_str].unique()
-                self.n_classes = len(self.class_labels)
-        else:
-            print('{} was not found in df'.format(label_str))
-
-        self.batch_size = batch_size
-        self.mono = mono
-        self.desired_fs = desired_fs
-        self.segment = segment
-        self.frame_size_sec0 = frame_size_sec0
-        self.normalize = normalize
-        self.frame_size_smp0 = int(frame_size_sec0 * desired_fs)
-
-        self.n_frames = None
-        self.frame_size_smp = None
-        self.n_channels = None
-        self.duration_smp = None
-
-        self.n_batches = None
-
-        self.item_shape = self.get_item_shape()
-
-    def get_num_batches(self):
-        if self.n_batches is None:
-            self.n_batches = int(numpy.ceil(len(self.files_df)/self.batch_size))
-        return self.n_batches
-
-    def get_item_shape(self):
-
-        # get a random file in the data set
-        f = self.files_df.iloc[numpy.random.randint(self.n_files)]['path']
-
-        # audio info
-        af_info = audioread.audio_open(f)
-        self.n_channels = af_info.channels if not self.mono else 1
-        duration_sec = af_info.duration
-        self.duration_smp = int(duration_sec * self.desired_fs)
-        self.duration_smp = int(numpy.ceil(self.duration_smp / self.desired_fs - 1 / self.desired_fs) * self.desired_fs)
-
-        if self.segment:
-            # compute number of frames
-            self.n_frames = int(numpy.ceil(self.duration_smp / self.frame_size_smp0))
-            # compute final duration of each frame
-            self.frame_size_smp = int(self.duration_smp / self.n_frames)
-
-
-        # return its shape
-        return numpy.shape(self.get_item_data(f))
-
-    def create_segments(self, audio):
-        n_channels = numpy.shape(audio)[-1]
-        start = 0
-        end = self.frame_size_smp
-
-        frame_matrix = numpy.zeros((self.n_frames, self.frame_size_smp, n_channels))
-
-        for f_idx in range(self.n_frames):
-            frame_matrix[f_idx, :, :] = audio[:, start:end, :]
-
-            start += self.frame_size_smp
-            end = start + self.frame_size_smp
-
-        return frame_matrix
-
-    def get_item_data(self, item_filename):
-
-        if os.path.isfile(item_filename) and os.path.getsize(item_filename) > 0:
-            # item_data0, fs = librosa.core.load(item_filename, sr=self.desired_fs, mono=self.mono)
-            # item_data0 = librosa.util.fix_length(item_data0, self.duration_smp)
-            #
-            # item_data = item_data0.reshape((self.n_channels, self.duration_smp, 1)).T
-            # # item_data = item_data[:, :int(numpy.ceil(self.duration_smp / fs - 1 / fs) * fs), :]
-            #
-            # if self.segment:
-            #     # TODO: segment with hop_size
-            #     item_data = self.create_segments(item_data)
-            #
-            # if self.normalize:
-            #     n_segments = item_data.shape[0]
-            #     n_channels = item_data.shape[-1]
-            #     for segment in range(n_segments):
-            #         norm_val = numpy.max(numpy.max(numpy.abs(item_data[segment]), axis=1 if n_channels == 2 else 0))
-            #         item_data[segment] /= norm_val
-
-            item_data = preprocess_input(item_filename)
-            item_data = np.expand_dims(item_data, axis=0)
-        else:
-            if os.path.getsize(item_filename) == 0:
-                print('\n\nSize of file {} is {}. Ignoring file.\n'.format(
-                    os.path.basename(item_filename), os.path.getsize(item_filename)))
-                return numpy.zeros((self.n_frames, self.frame_size_smp, self.n_channels))
-            else:
-                raise IOError("File not found [%s]" % (item['file']))
-
-        return item_data
-
-    def labels_to_matrix(self, data, labels):
-        labels_one_hot = {}
-        for item_filename, item_data in data.items():
-            n_segments = item_data.shape[0]
-            item_label = labels[item_filename]
-
-            if self.label_already_formatted:
-                labels_one_hot[item_filename] = numpy.tile(item_label, (n_segments, 1))
-            else:
-                pos = numpy.where(self.class_labels == item_label)
-                roll = numpy.zeros((n_segments, self.n_classes))
-                roll[:, pos] = 1
-
-                labels_one_hot[item_filename] = roll
-
-        return labels_one_hot
-
-    def reset_output_arrays(self):
-        self.batch_files = []
-        self.batch_data = {}
-        self.batch_labels = {}
-        pass
-
-    def process_output(self):
-
-        # Convert annotations into activity matrix format
-        labels_one_hot = self.labels_to_matrix(data=self.batch_data, labels=self.batch_labels)
-
-        x_training = numpy.vstack([self.batch_data[x] for x in self.batch_files])
-        y_training = numpy.vstack([labels_one_hot[x] for x in self.batch_files])
-
-        return x_training, y_training
-
-    def flow(self):
-        # sequence = annotation.keys()
-
-        while True:
-            batch_idx = 0
-
-            # for item_filename in self.sequence:
-
-            for idx, item in self.files_df.iterrows():
-                item_filename = item['path']
-                label = item[self.label_str]
-
-                if batch_idx == 0:
-                    self.reset_output_arrays()
-
-                self.batch_files.append(item_filename)
-                self.batch_labels[item_filename] = label
-                self.batch_data[item_filename] = self.get_item_data(item_filename)
-
-                if batch_idx == self.batch_size - 1:
-
-                    batch_idx = 0  # reinitialize batch counter
-
-                    # output of generator
-                    x_training, y_training = self.process_output()
-                    yield x_training, y_training
-
-                else:
-                    batch_idx += 1
-
-            if not batch_idx == 0:
-                # output of generator
-                x_training, y_training = self.process_output()
-                yield x_training, y_training
+from sketch_utils.audio_utils import VerySimpleGenerator
 
 TH_WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.3/music_tagger_crnn_weights_tf_kernels_th_dim_ordering.h5'
 TF_WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.3/music_tagger_crnn_weights_tf_kernels_tf_dim_ordering.h5'
@@ -406,7 +222,7 @@ def MusicTaggerCRNN(weights='msd', input_tensor=None, include_top=True):
     # Create model
     model = Model(melgram_input, x)
     if weights is None:
-        model.compile(optimizer=Adam(lr=5e-3),loss='binary_crossentropy')
+        model.compile(optimizer=Adam(lr=5e-3), loss='binary_crossentropy', metrics=['categorical_accuracy'])
         return model
     else:
         # Load weights
@@ -447,7 +263,10 @@ if __name__ == '__main__':
     eval_folds = [12]
     test_folds = [13, 14, 15]
 
-    params_filename = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'parameters', 'task1'+'.defaults.yaml')
+    params_filename = 'parameters.yaml'
+
+    learner_params = get_learner_params(params_filename, parameter_set)
+    callbacks = get_callbacks(filename, learner_params)
 
     # read and process meta, train, eval files - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     columns = ['path', 'scene_label', 'code']
@@ -456,33 +275,31 @@ if __name__ == '__main__':
     train_df = meta_df[meta_df['fold'].isin(train_folds)]
     eval_df = meta_df[meta_df['fold'].isin(test_folds)]
 
+    # create post processing list
+    post_processing = [{'mel_spectrogram':{'enable': True}}]
+
     # create training and evaluation generators  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     train_vsg = VerySimpleGenerator(train_df,
-                                    batch_size=1,
+                                    batch_size=10,
                                     mono=True,
                                     desired_fs=12000,
-                                    segment=False,
-                                    frame_size_sec0=3.0,
-                                    normalize=False,
-                                    label_str='label')
+                                    label_str='label',
+                                    post_processing_list=post_processing)
 
     # next(train_vsg.flow())
 
     eval_vsg = VerySimpleGenerator(eval_df,
-                                   batch_size=1,
+                                   batch_size=10,
                                    mono=True,
                                    desired_fs=12000,
-                                   segment=False,
-                                   frame_size_sec0=3.0,
-                                   normalize=False,
-                                   label_str='label')
+                                   label_str='label',
+                                   post_processing_list=post_processing)
 
-    print('here')
     model.fit_generator(train_vsg.flow(),
                         train_vsg.get_num_batches(),
                         verbose=1,
                         epochs=200,
-                        callbacks=None, #callbacks,
+                        callbacks=callbacks,
                         validation_data=eval_vsg.flow(),
                         validation_steps=eval_vsg.get_num_batches())
 
